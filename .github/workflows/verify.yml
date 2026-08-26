@@ -1,0 +1,63 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.11
+          cache: true
+      - run: make verify
+      - run: go test -race -count=1 ./...
+      - run: go build ./...
+      - run: go mod verify
+      - run: go mod tidy -diff
+
+  mysql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ["8.0", "8.4"]
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql }}
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -uroot --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.11
+          cache: true
+      - name: Create isolated test databases
+        env:
+          MYSQL_CONTAINER_ID: ${{ job.services.mysql.id }}
+        run: >-
+          docker exec "$MYSQL_CONTAINER_ID" mysql -uroot -e
+          "CREATE DATABASE plugin_lib_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+          CREATE DATABASE plugin_lib_drift CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+      - name: Run MySQL integration suite
+        env:
+          OCTO_PLUGIN_LIB_MYSQL_DSN: root@tcp(127.0.0.1:3306)/plugin_lib_test?parseTime=true&loc=UTC
+          OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN: root@tcp(127.0.0.1:3306)/plugin_lib_drift?parseTime=true&loc=UTC
+        run: make test-mysql

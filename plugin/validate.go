@@ -84,23 +84,15 @@ func ValidatePlugin(item Plugin) error {
 // NormalizePlugin canonicalizes both JSON documents and calculates the hash.
 // It validates but does not assign identity, status, or timestamps.
 func NormalizePlugin(item Plugin) (Plugin, error) {
-	manifest, err := CanonicalJSON(item.ManifestJSON)
-	if err != nil {
-		return Plugin{}, withPath(err, "manifest_json")
-	}
-	packageJSON := []byte("null")
-	if !isJSONNull(item.PluginJSON) {
-		packageJSON, err = canonicalPackageJSON(item.PluginJSON)
-		if err != nil {
-			return Plugin{}, withPath(err, "plugin_json")
-		}
-	}
-	item.ManifestJSON = manifest
-	item.PluginJSON = packageJSON
-	item.PluginHash, err = ComputePluginHash(manifest, packageJSON)
+	content, err := NormalizeRevisionContent(RevisionContent{
+		PluginType: item.PluginType, ManifestJSON: item.ManifestJSON, PluginJSON: item.PluginJSON,
+	})
 	if err != nil {
 		return Plugin{}, err
 	}
+	item.ManifestJSON = content.ManifestJSON
+	item.PluginJSON = content.PluginJSON
+	item.PluginHash = content.PluginHash
 	if err := ValidatePlugin(item); err != nil {
 		return Plugin{}, err
 	}

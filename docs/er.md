@@ -47,6 +47,8 @@ erDiagram
 ## 约束
 
 - `plugin` 主键：`(scope_id, id)`。
+- `scope_id` 与 `id` 分别使用 ASCII 标识符和小写 UUID CHECK；所有子表通过复合外键继承
+  同一 scope 与 Plugin 身份边界。
 - `plugin_revision` 主键：`(scope_id, plugin_id, revision_no)`；外键指向
   `plugin(scope_id,id)`。
 - 当前 Revision 是一个复合外键：
@@ -63,5 +65,7 @@ erDiagram
   Store 读取时校验一致，Manifest 仍是权威真源。
 - `manifest_json/plugin_json` 是 `utf8mb4_bin LONGTEXT`，保存 Canonical JSON；Schema、
   语义校验与 `plugin_hash` 由 Lib 负责，不让 MySQL JSON 数值解析器缩窄公共契约。
+- `created_by` 使用 `VARCHAR(191) ASCII BIN`，CHECK 与 Service 一致地只允许非空
+  ASCII 标识符；191 是当前上限，主体格式和是否进一步收窄仍待多宿主确认。
 - 无 `plugin_file` 表。Attachment 的物理位置由宿主 Content Store 根据
   `scope_id + content_hash` 解析。

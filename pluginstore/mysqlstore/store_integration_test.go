@@ -40,6 +40,79 @@ func TestMySQLStore(t *testing.T) {
 	pluginconformance.Run(t, service)
 }
 
+func TestInstallReleasesAdvisoryLock(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	probe, err := sql.Open("mysql", os.Getenv("OCTO_PLUGIN_LIB_MYSQL_DSN"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probe.Close() //nolint:errcheck
+	probe.SetMaxOpenConns(1)
+	var lockName string
+	if err := probe.QueryRow("SELECT CONCAT('opl:', LEFT(SHA2(DATABASE(), 256), 60))").Scan(&lockName); err != nil {
+		t.Fatal(err)
+	}
+	var owner sql.NullInt64
+	if err := probe.QueryRow("SELECT IS_USED_LOCK(?)", lockName).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	if owner.Valid {
+		t.Fatalf("Install leaked advisory lock %q to connection %d", lockName, owner.Int64)
+	}
+}
+
+func TestInstallRejectsIncompleteOwnedTables(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN")
+	db.SetMaxOpenConns(1)
+	resetOwnedTables(t, db)
+	t.Cleanup(func() { resetOwnedTables(t, db) })
+
+	if _, err := db.Exec("CREATE TABLE plugin (id INT PRIMARY KEY) ENGINE=InnoDB"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(context.Background(), db); err == nil || !strings.Contains(err.Error(), "found 1 of 3 owned tables") {
+		t.Fatalf("Install incomplete-schema error = %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*)
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_name IN ('plugin', 'plugin_revision', 'plugin_relation')`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("Install changed an incomplete schema: found %d owned tables", count)
+	}
+}
+
+func TestConcurrentInstallIsSerialized(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN")
+	db.SetMaxOpenConns(2)
+	resetOwnedTables(t, db)
+
+	start := make(chan struct{})
+	errors := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			errors <- Install(context.Background(), db)
+		}()
+	}
+	close(start)
+	for range 2 {
+		if err := <-errors; err != nil {
+			t.Fatalf("concurrent Install: %v", err)
+		}
+	}
+	if err := VerifySchema(context.Background(), db); err != nil {
+		t.Fatalf("schema after concurrent Install: %v", err)
+	}
+}
+
 func TestCanonicalJSONTextRoundTrip(t *testing.T) {
 	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
 	if err := Install(context.Background(), db); err != nil {
@@ -787,6 +860,27 @@ func TestDatabaseChecksAreEnforced(t *testing.T) {
 			t.Fatalf("%s CHECK error = %v", name, err)
 		}
 	}
+
+	assertCheckFailure := func(name, query string, arguments ...any) {
+		t.Helper()
+		_, err := db.Exec(query, arguments...)
+		var mysqlError *driver.MySQLError
+		if !errors.As(err, &mysqlError) || mysqlError.Number != 3819 {
+			t.Fatalf("%s CHECK error = %v", name, err)
+		}
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	const insertPlugin = `INSERT INTO plugin
+(scope_id, id, name, description, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, 'Invalid', '', 'skill', 'ACTIVE', NULL, 1, ?, ?)`
+	assertCheckFailure("scope_id", insertPlugin,
+		"bad\nscope", "30000000-0000-4000-8000-000000000002", now, now)
+	assertCheckFailure("plugin_id", insertPlugin,
+		scope.ID, "30000000-0000-4000-8000-00000000000A", now, now)
+	assertCheckFailure("created_by", `INSERT INTO plugin_revision
+(scope_id, plugin_id, revision_no, manifest_json, plugin_json, plugin_hash, created_by, created_at)
+VALUES (?, ?, 2, ?, ?, ?, ?, ?)`, scope.ID, pluginID,
+		created.Revision.ManifestJSON, created.Revision.PluginJSON, created.Revision.PluginHash, "bad\nactor", now)
 }
 
 func TestVerifySchemaRejectsDrift(t *testing.T) {
@@ -832,6 +926,26 @@ func integrationDatabase(t *testing.T, variable string) *sql.DB {
 		t.Fatal(err)
 	}
 	return db
+}
+
+func resetOwnedTables(t *testing.T, db *sql.DB) {
+	t.Helper()
+	connection, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close() //nolint:errcheck
+	if _, err := connection.ExecContext(context.Background(), "SET FOREIGN_KEY_CHECKS = 0"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := connection.ExecContext(context.Background(), "SET FOREIGN_KEY_CHECKS = 1"); err != nil {
+			t.Errorf("restore FOREIGN_KEY_CHECKS: %v", err)
+		}
+	}()
+	if _, err := connection.ExecContext(context.Background(), "DROP TABLE IF EXISTS plugin_relation, plugin_revision, plugin"); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func nullPlugin(pluginType contract.Type, name string) pluginservice.ContentInput {

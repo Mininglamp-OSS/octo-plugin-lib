@@ -11,7 +11,7 @@
 .skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;background:var(--panel);padding:.6rem 1rem;border:2px solid var(--accent);z-index:10}
 .layout{display:grid;grid-template-columns:230px minmax(0,920px);gap:2rem;max-width:1230px;margin:auto;padding:2rem}
 nav{position:sticky;top:1rem;align-self:start;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:1rem}
-nav a{display:block;color:var(--muted);padding:.35rem .5rem;border-radius:6px;text-decoration:none}nav a:hover,nav a:focus-visible{color:var(--text);background:var(--code);outline:2px solid transparent}
+nav a{display:block;color:var(--muted);padding:.35rem .5rem;border-radius:6px;text-decoration:none}nav a:hover,nav a:focus-visible{color:var(--text);background:var(--code)}a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 main{min-width:0}.hero{padding:2.5rem;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin-bottom:1.5rem}
 .eyebrow{color:var(--accent);font-weight:700;letter-spacing:.08em;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.6rem);line-height:1.05;margin:.4rem 0 1rem}h2{margin-top:2.5rem;border-bottom:1px solid var(--line);padding-bottom:.4rem}h3{margin-top:1.7rem}
 .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:1.1rem;margin:1rem 0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
@@ -30,7 +30,7 @@ pre{overflow:auto;background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:10
 <strong>Plugin Lib TRD</strong>
 <a href="#scope">边界</a><a href="#contract">公共契约</a><a href="#files">文件与 Hash</a>
 <a href="#er">ER / 事务</a><a href="#api">Go API</a><a href="#market">宿主接入</a>
-<a href="#verify">验收</a>
+<a href="#open">开放项</a><a href="#verify">验收</a>
 </nav>
 <main id="content">
 <header class="hero">
@@ -116,7 +116,7 @@ Plugin/Manifest 一致性、Hash、时间顺序、Relation 端点和类型专属
 <code>encoding/json</code> 规则，<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code>、U+2028、U+2029
 使用 <code>\u</code> 转义。对象排序 O(k log k)，内存与规范化输出之和同阶；
 JSON 最多嵌套 512 个 object/array 容器。UUID 不校验 UUID version 或 variant；孤立 UTF-16 surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、semantic
-fixtures 和 golden Hash。</p>
+fixtures 和 golden Hash；仓库的 <code>make verify</code> 使用 Python 标准库独立复算 Canonical JSON 边界和 golden Hash，不让 Go 实现自证一致。</p>
 </section>
 
 <section id="er"><h2>4. ER 与事务</h2>
@@ -126,11 +126,12 @@ fixtures 和 golden Hash。</p>
   └── N:N plugin_relation (scope_id, source_plugin_id, relation_type, target_plugin_id)</pre>
 <ul>
 <li><code>scope_id VARCHAR(40)</code>；<code>revision_no</code> 与 <code>lock_version</code> 为 INT UNSIGNED / Go uint32。</li>
+<li><code>scope_id</code>、<code>plugin.id</code> 与 <code>created_by</code> 的 ASCII 标识符/小写 UUID 规则由 Service 和 MySQL CHECK 双层一致约束；<code>created_by</code> 使用 ASCII BIN。</li>
 <li>Revision No 在锁定 Plugin 行的事务内从 1 递增，不使用全表 AUTO_INCREMENT。</li>
 <li>Create 固定 ACTIVE；Update、SetStatus、ReplaceRelations 共享 lock_version CAS。</li>
 <li>ARCHIVED Plugin 的普通 Update（包括 no-op）均拒绝；Restore 可追加内容 Revision，但保持 ARCHIVED 且不改变当前关系。</li>
 <li>CreateGraph 校验闭包后一次提交；失败全部回滚。</li>
-<li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>；Install 实际往返 UTC 微秒时间并拒绝错误配置。</li>
+<li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>；Install 实际往返 UTC 微秒时间并拒绝错误配置。安装在数据库级 advisory lock 内执行：三张自有表全无时才建表，三表齐全时只校验，只存在 1～2 张表或结构漂移时直接失败；锁释放有独立 5 秒超时并校验释放结果，失败时丢弃物理连接，避免带锁回池。</li>
 <li>Revision 不可变由公开 API/Store 保证，不使用数据库 trigger；宿主数据库账号不得用原始 SQL 绕过。</li>
 <li>结构指纹已在 MySQL 8.0.46 和 8.4.10 验证。</li>
 <li>Get、List 和 ListRevisions 的普通调用使用 REPEATABLE READ 快照事务，但不声明 READ ONLY，避免数据库代理误路由到延迟副本；宿主连接必须满足读己之写。Get 的 Plugin、Revision、Relation 一致，两个列表的总数与当前页一致。WithTx 读取遵循宿主事务隔离级别。</li>
@@ -139,7 +140,7 @@ fixtures 和 golden Hash。</p>
 <li>生产环境分离迁移账号与最小权限运行时账号；调用方最低 Go 语言版本为 1.25，本仓库使用 Go 1.25.11 工具链验证。</li>
 <li>List 使用页码/offset；单次调用一致，但不提供跨请求快照。并发更新可能使项目换页，调用方应刷新。</li>
 </ul>
-<p>旧 MySQL JSON 列不能直接 ALTER 为 LONGTEXT：数据库已重编码的数据无法恢复原 Canonical 字节。旧实验库必须从可信原始内容经当前 Lib 重新校验并导入新空库。若查询投影被越权改坏，按真实描述筛选可能漏行；发现漂移时停止写入并由管理员从可信来源重建，不提供在线猜测修复。</p>
+<p>本库不执行推断式迁移或结构修补；部分三表结构不会被 Install 补全。不兼容结构必须使用新空库，并从可信原始内容经当前 Lib 重新校验导入，不做可能损坏 Canonical 字节的原地列转换。若查询投影被越权改坏，按真实描述筛选可能漏行；发现漂移时停止写入并由管理员从可信来源重建，不提供在线猜测修复。</p>
 </section>
 
 <section id="api"><h2>5. Go API</h2>
@@ -189,23 +190,32 @@ fixtures 和 golden Hash。</p>
 </tbody></table></div>
 <p>绑定事务仍由宿主最终提交或回滚。Lib 写调用失败会回滚到本次 SAVEPOINT；若 SAVEPOINT
 恢复失败或 MySQL 已终止整个事务，错误匹配 <code>pluginstore.ErrTransactionAborted</code>，
-且 <code>pluginstore.Code</code> 返回 <code>INTERNAL</code>；宿主必须重新开始事务，不能继续提交或重试旧事务。</p>
+且 <code>pluginstore.Code</code> 返回 <code>INTERNAL</code>；宿主必须重新开始事务，不能继续提交或重试旧事务。
+传入 <code>WithTx</code> 的事务必须来自初始化 Store 的同一 database/schema 连接池。</p>
 </section>
 
 <section id="market"><h2>6. 宿主与 Market</h2>
 <p>Market 保存 Space 公开 Plugin；Loop/Buddy 保存各自私有副本。Market 招募时传输当前
 闭合关系图与附件原始字节，目标宿主生成新 ID 并深拷贝。Lib 不定义跨服务 HTTP，也不允许
 目标宿主直连 Market 数据库或 Bucket。</p>
-<table><tbody>
+<div class="table-wrap"><table><tbody>
 <tr><td><code>mcp</code></td><td>必须有根目录 <code>mcp.json</code>；嵌套 Skill 可选</td></tr>
 <tr><td><code>cli</code></td><td>必须有根目录 <code>cli.json</code> 和至少一个 <code>skills/&lt;name&gt;/SKILL.md</code></td></tr>
 <tr><td><code>skill-only</code></td><td>必须包含根目录 <code>token-schema.json</code>，并至少包含一个 <code>skills/&lt;name&gt;/SKILL.md</code>；附件顺序不表达业务语义</td></tr>
 <tr><td><code>openconnector</code></td><td>必须有根目录 <code>mcp.json</code></td></tr>
-</tbody></table>
+</tbody></table></div>
 </section>
 
-<section id="verify"><h2>7. 验收门禁</h2>
-<p>Schema/fixtures/golden、unit/race/vet/build、fresh MySQL 安装与重复安装、CRUD、CAS、
+<section id="open"><h2>7. 明确开放项</h2>
+<p>以下事项没有多宿主共识，不属于当前 v2 的变更承诺：公共 JSON/API 继续使用
+<code>plugin_id/plugin_name/plugin_type</code>；Manifest 暂时保留
+<code>plugin_name/plugin_type/name</code>；<code>created_by</code> 当前上限 191；Connector
+<code>source</code> 保持必填；<code>plugin_json</code> 继续表示 Package。任何后续变更都必须使用
+新的 Schema ID，并同步 Go API、fixtures、DDL/Store、conformance 与文档，不能原地修改已发布 Schema。</p>
+</section>
+
+<section id="verify"><h2>8. 验收门禁</h2>
+<p>Schema/fixtures/golden、Python 标准库跨语言复算、unit/race/vet/build、fresh MySQL 安装与重复安装、CRUD、CAS、
 scope 隔离、事务回滚、图原子性、结构漂移和独立 GOWORK=off 消费者必须全部通过。</p>
 <p>稳定错误码：<code>invalid_json</code>、<code>invalid_field</code>、
 <code>invalid_plugin_type</code>、<code>invalid_relation_type</code>、
@@ -215,7 +225,7 @@ scope 隔离、事务回滚、图原子性、结构漂移和独立 GOWORK=off �
 <p>Service 返回契约校验错误时同时保留 <code>pluginstore.ErrInvalidArgument</code> 与原始
 <code>plugin.ValidationError</code>，宿主通过 <code>errors.As</code> 读取稳定的
 <code>Code/Path</code>，不得解析错误文本。</p>
-<p>发布首个稳定版本后，同一 Schema ID 的内容不可变。</p>
+<p>已发布的同一 Schema ID 内容不可变。</p>
 </section>
 </main>
 </div>

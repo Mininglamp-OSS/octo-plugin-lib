@@ -30,6 +30,7 @@
     }
   ],
   "invalid_inputs": [
+    "{\"duplicate\":1,\"duplicate\":2}",
     "1e10001",
     "1e-10001",
     "[1e10000,1e10000]",
