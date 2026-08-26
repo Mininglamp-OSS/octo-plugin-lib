@@ -101,6 +101,7 @@ Plugin/Manifest 一致性、Hash、时间顺序、Relation 端点和类型专属
 <li><code>storage</code> 必须提供 <code>content_size/content_hash</code>，不允许 <code>raw_content/storage_uri</code>。</li>
 <li>path 最多 512 字符，拒绝绝对路径、Windows 盘符路径、反斜杠、dot/parent/空段、控制字符、重复 path 和尾斜杠。</li>
 <li>MIME 最多 255 字符；非空值按 Unicode White_Space 判断；<code>content_size</code> 最大 <code>9007199254740991</code>。</li>
+<li>文档总大小、附件总大小和附件数量由宿主在 HTTP、上传和存储入口限制；Lib 不充当请求体限流器。</li>
 </ul>
 <p>Lib 不读取 storage 对象字节。宿主按 <code>scope_id + content_hash</code> 稳定定位私有对象。</p>
 <p>四类 Plugin 都允许显式 <code>plugin_json: null</code>。非空 Package 中，Expert 需要
@@ -108,9 +109,12 @@ Plugin/Manifest 一致性、Hash、时间顺序、Relation 端点和类型专属
 描述；Expert Team 只能包含 <code>AGENTS.md</code>；Connector 按下表约束。</p>
 <p><code>plugin_hash = sha256(canonical(manifest_json) + canonical(plugin_json))</code>。Attachment
 按 path 排序，其数组顺序不影响 Hash；其他数组保序。Canonical JSON 不等同于 RFC 8785/JCS。
-数字文本最长 128，指数范围为 -10000～10000；对象键排序 O(k log k)，内存与规范化输出之和同阶，
-指数展开最多增加约 10,000 个展开字符。UUID 不校验 UUID version 或 variant；孤立 UTF-16
-surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、semantic fixtures 和 golden Hash。</p>
+数字文本最长 128，指数范围为 -10000～10000；对象键按 Unicode scalar value 升序排列，
+对合法 UTF-8 等价于 UTF-8 字节序，不得使用 UTF-16 code-unit 默认顺序。字符串使用 Go
+<code>encoding/json</code> 规则，<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code>、U+2028、U+2029
+使用 <code>\u</code> 转义。对象排序 O(k log k)，内存与规范化输出之和同阶，指数展开最多增加约 10,000 个展开字符；
+JSON 最多嵌套 512 个 object/array 容器。UUID 不校验 UUID version 或 variant；孤立 UTF-16 surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、semantic
+fixtures 和 golden Hash。</p>
 </section>
 
 <section id="er"><h2>4. ER 与事务</h2>
@@ -122,9 +126,12 @@ surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、sema
 <li><code>scope_id VARCHAR(40)</code>；<code>revision_no</code> 与 <code>lock_version</code> 为 INT UNSIGNED / Go uint32。</li>
 <li>Revision No 在锁定 Plugin 行的事务内从 1 递增，不使用全表 AUTO_INCREMENT。</li>
 <li>Create 固定 ACTIVE；Update、SetStatus、ReplaceRelations 共享 lock_version CAS。</li>
-<li>Restore 追加内容 Revision，不改变状态或当前关系。</li>
+<li>ARCHIVED Plugin 的普通 Update（包括 no-op）均拒绝；Restore 可追加内容 Revision，但保持 ARCHIVED 且不改变当前关系。</li>
 <li>CreateGraph 校验闭包后一次提交；失败全部回滚。</li>
-<li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>，时间入库统一为 UTC 微秒。</li>
+<li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>；Install 实际往返 UTC 微秒时间并拒绝错误配置。</li>
+<li>Revision 不可变由公开 API/Store 保证，不使用数据库 trigger；宿主数据库账号不得用原始 SQL 绕过。</li>
+<li>结构指纹已在 MySQL 8.0.46 与 8.4.9 验证。</li>
+<li>List 使用页码/offset 并返回当前页，不提供跨请求快照；并发更新可能使项目换页，调用方应刷新。</li>
 </ul>
 </section>
 
@@ -158,7 +165,7 @@ surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、sema
 <tr><td><code>mysqlstore.Install</code></td><td>安装三表</td></tr>
 <tr><td><code>mysqlstore.VerifySchema</code></td><td>核验结构指纹</td></tr>
 <tr><td><code>mysqlstore.New</code></td><td>创建 Store</td></tr>
-<tr><td><code>Store.WithTx</code></td><td>绑定宿主事务</td></tr>
+<tr><td><code>Store.WithTx</code></td><td>用每次写调用一个 SAVEPOINT 绑定宿主事务</td></tr>
 <tr><td><code>pluginservice.New</code></td><td>创建 Service</td></tr>
 <tr><td><code>Service.WithTx</code></td><td>绑定宿主事务</td></tr>
 <tr><td><code>Service.Create</code></td><td>创建 Plugin</td></tr>
@@ -171,8 +178,11 @@ surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、sema
 <tr><td><code>Service.ListRevisions</code></td><td>列出历史</td></tr>
 <tr><td><code>Service.Restore</code></td><td>恢复为新 Revision</td></tr>
 <tr><td><code>Service.CreateGraph</code></td><td>原子创建闭合图</td></tr>
-<tr><td><code>pluginconformance.Run</code></td><td>宿主一致性验证</td></tr>
+<tr><td><code>pluginconformance.Run</code></td><td>仅供宿主 <code>_test.go</code> 使用的一致性验证</td></tr>
 </tbody></table></div>
+<p>绑定事务仍由宿主最终提交或回滚。Lib 写调用失败会回滚到本次 SAVEPOINT；若 SAVEPOINT
+恢复失败或 MySQL 已终止整个事务，错误匹配 <code>pluginstore.ErrTransactionAborted</code>，
+且 <code>pluginstore.Code</code> 返回 <code>INTERNAL</code>；宿主必须重新开始事务，不能继续提交或重试旧事务。</p>
 </section>
 
 <section id="market"><h2>6. 宿主与 Market</h2>

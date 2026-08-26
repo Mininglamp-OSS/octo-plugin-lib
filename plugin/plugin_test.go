@@ -287,7 +287,8 @@ func TestCanonicalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixture struct {
-		Cases []struct {
+		MaxNesting int `json:"max_nesting"`
+		Cases      []struct {
 			Name      string `json:"name"`
 			Input     string `json:"input"`
 			Canonical string `json:"canonical"`
@@ -321,6 +322,17 @@ func TestCanonicalJSON(t *testing.T) {
 	}
 	if got, err := plugin.CanonicalJSON([]byte(`{"text":"\ud834\udd1e"}`)); err != nil || string(got) != `{"text":"𝄞"}` {
 		t.Fatalf("CanonicalJSON() surrogate pair = %s, %v", got, err)
+	}
+	if fixture.MaxNesting != 512 {
+		t.Fatalf("canonical fixture max_nesting = %d, want 512", fixture.MaxNesting)
+	}
+	valid := []byte(strings.Repeat("[", fixture.MaxNesting) + "0" + strings.Repeat("]", fixture.MaxNesting))
+	if _, err := plugin.CanonicalJSON(valid); err != nil {
+		t.Fatalf("CanonicalJSON() rejected max_nesting containers: %v", err)
+	}
+	invalid := []byte(strings.Repeat("[", fixture.MaxNesting+1) + "0" + strings.Repeat("]", fixture.MaxNesting+1))
+	if _, err := plugin.CanonicalJSON(invalid); err == nil {
+		t.Fatal("CanonicalJSON() accepted more than max_nesting containers")
 	}
 }
 
@@ -676,6 +688,11 @@ func TestDocumentationMatchesContract(t *testing.T) {
 		for _, phrase := range []string{"数组顺序", "不读取 storage 对象字节", "不校验 UUID version 或 variant"} {
 			if !strings.Contains(string(data), phrase) {
 				t.Errorf("%s does not document representation boundary %q", filename, phrase)
+			}
+		}
+		for _, phrase := range []string{"Unicode scalar value", "UTF-16 code-unit", "最多嵌套 512", "SAVEPOINT", "pluginstore.ErrTransactionAborted", "ARCHIVED Plugin"} {
+			if !strings.Contains(string(data), phrase) {
+				t.Errorf("%s does not document runtime contract %q", filename, phrase)
 			}
 		}
 		for _, name := range []string{

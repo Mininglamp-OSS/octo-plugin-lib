@@ -24,13 +24,18 @@ Secret、Runtime 和对象存储。Attachment 的 `storage` 形式只携带
 
 MySQL DSN 必须包含 `parseTime=true&loc=UTC`。安装和使用示例见
 [docs/usage.md](docs/usage.md)，完整设计见 [docs/TRD.md](docs/TRD.md)。
+`Install` 会实际往返一个带微秒的 UTC 时间并拒绝错误连接配置。通过 `WithTx` 组合宿主
+事务时，每次 Lib 写操作由 SAVEPOINT 隔离；宿主仍拥有最终 commit/rollback。
 
 ## 验证
 
 ```bash
 make verify
+# 同时设置 OCTO_PLUGIN_LIB_MYSQL_DSN 与 OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN：
+make test-mysql
 ```
 
 Canonical JSON 是本项目定义的稳定编码，不等同于 RFC 8785/JCS；跨语言实现必须以
-`contracts/v2/fixtures/golden` 的 golden 数据为准。发布首个稳定版本后，同一 Schema ID
-的内容不可变。
+`contracts/v2/fixtures/golden` 的 golden 数据为准。对象键按 Unicode scalar 顺序排列，
+字符串使用 Go `encoding/json` 转义规则，JSON 最多嵌套 512 层。文档和附件总量由各宿主
+入口按自身产品边界限制。发布首个稳定版本后，同一 Schema ID 的内容不可变。

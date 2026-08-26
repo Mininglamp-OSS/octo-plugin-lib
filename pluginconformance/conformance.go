@@ -1,5 +1,6 @@
 // Package pluginconformance provides a reusable behavioral suite for hosts
-// that expose the shared Plugin Service contract.
+// that expose the shared Plugin Service contract. Hosts should call Run only
+// from _test.go files; it is test support, not a production runtime dependency.
 package pluginconformance
 
 import (
@@ -68,6 +69,11 @@ func Run(t *testing.T, api API) {
 	})
 	if err != nil || archived.Plugin.LockVersion != 2 || archived.Revision.RevisionNo != 1 {
 		t.Fatalf("SetStatus archive = %#v, %v", archived, err)
+	}
+	if _, err := api.Update(ctx, scope, actor, skillID, pluginservice.UpdateInput{
+		ExpectedLockVersion: 2, Content: skillContent,
+	}); !errors.Is(err, pluginstore.ErrConflict) {
+		t.Fatalf("ARCHIVED no-op content Update error = %v", err)
 	}
 	changedContent := content(contract.TypeSkill, "Conformance Skill v2", "historical-description-only")
 	if _, err := api.Update(ctx, scope, actor, skillID, pluginservice.UpdateInput{

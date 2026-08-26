@@ -9,6 +9,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	contract "github.com/Mininglamp-OSS/octo-plugin-lib/plugin"
 	"github.com/Mininglamp-OSS/octo-plugin-lib/pluginstore"
@@ -19,6 +21,10 @@ type Store struct {
 	db *sql.DB
 	tx *sql.Tx
 }
+
+var savepointSequence atomic.Uint64
+
+const transactionCleanupTimeout = 5 * time.Second
 
 func New(db *sql.DB) (*Store, error) {
 	if db == nil {
@@ -180,7 +186,7 @@ func (store *Store) write(ctx context.Context, operation func(*sql.Tx) error) er
 		return pluginstore.ErrStorage
 	}
 	if store.tx != nil {
-		return operation(store.tx)
+		return writeAtSavepoint(ctx, store.tx, operation)
 	}
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -194,6 +200,37 @@ func (store *Store) write(ctx context.Context, operation func(*sql.Tx) error) er
 		return storageError("commit transaction", err)
 	}
 	return nil
+}
+
+func writeAtSavepoint(ctx context.Context, tx *sql.Tx, operation func(*sql.Tx) error) error {
+	name := fmt.Sprintf("octo_plugin_lib_%x", savepointSequence.Add(1))
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+name); err != nil {
+		return storageError("create savepoint", err)
+	}
+
+	operationErr := operation(tx)
+	cleanupContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), transactionCleanupTimeout)
+	defer cancel()
+	if operationErr != nil {
+		if _, err := tx.ExecContext(cleanupContext, "ROLLBACK TO SAVEPOINT "+name); err != nil {
+			return abortBoundTransaction(tx, errors.Join(operationErr, storageError("rollback to savepoint", err)))
+		}
+		if _, err := tx.ExecContext(cleanupContext, "RELEASE SAVEPOINT "+name); err != nil {
+			return abortBoundTransaction(tx, errors.Join(operationErr, storageError("release savepoint", err)))
+		}
+		return operationErr
+	}
+	if _, err := tx.ExecContext(cleanupContext, "RELEASE SAVEPOINT "+name); err != nil {
+		return abortBoundTransaction(tx, storageError("release savepoint", err))
+	}
+	return nil
+}
+
+func abortBoundTransaction(tx *sql.Tx, cause error) error {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		cause = errors.Join(cause, storageError("abort caller transaction", err))
+	}
+	return errors.Join(cause, pluginstore.ErrTransactionAborted)
 }
 
 type database interface {
@@ -225,13 +262,13 @@ func create(ctx context.Context, tx *sql.Tx, record pluginstore.CreateRecord) (p
 	if err := insertRevision(ctx, tx, record.Revision); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	if err := setCurrentRevision(ctx, tx, record.Plugin.ScopeID, record.Plugin.PluginID, 1, true); err != nil {
+	if err := setCurrentRevision(ctx, tx, record.Plugin.ScopeID, record.Plugin.PluginID, 1); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
 	if err := insertRelations(ctx, tx, record.Relations); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	return get(ctx, tx, record.Plugin.ScopeID, record.Plugin.PluginID)
+	return getForUpdate(ctx, tx, record.Plugin.ScopeID, record.Plugin.PluginID)
 }
 
 func createGraph(ctx context.Context, tx *sql.Tx, records []pluginstore.CreateRecord) ([]pluginstore.Snapshot, error) {
@@ -275,7 +312,7 @@ func createGraph(ctx context.Context, tx *sql.Tx, records []pluginstore.CreateRe
 		if err := insertRevision(ctx, tx, record.Revision); err != nil {
 			return nil, err
 		}
-		if err := setCurrentRevision(ctx, tx, scopeID, record.Plugin.PluginID, 1, true); err != nil {
+		if err := setCurrentRevision(ctx, tx, scopeID, record.Plugin.PluginID, 1); err != nil {
 			return nil, err
 		}
 	}
@@ -286,7 +323,7 @@ func createGraph(ctx context.Context, tx *sql.Tx, records []pluginstore.CreateRe
 	}
 	results := make([]pluginstore.Snapshot, 0, len(ordered))
 	for _, record := range ordered {
-		item, err := get(ctx, tx, scopeID, record.Plugin.PluginID)
+		item, err := getForUpdate(ctx, tx, scopeID, record.Plugin.PluginID)
 		if err != nil {
 			return nil, err
 		}
@@ -313,16 +350,16 @@ func updateContent(ctx context.Context, tx *sql.Tx, record pluginstore.ContentUp
 	if currentLock.pluginType != record.PluginType {
 		return pluginstore.Snapshot{}, pluginstore.ErrInvalidArgument
 	}
-	current, err := get(ctx, tx, record.ScopeID, record.PluginID)
+	current, err := getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 	if err != nil {
 		return pluginstore.Snapshot{}, err
+	}
+	if !record.ForceRevision && !contract.IsActiveStatus(current.Plugin.Status) {
+		return pluginstore.Snapshot{}, fmt.Errorf("%w: ARCHIVED Plugin content cannot be edited", pluginstore.ErrConflict)
 	}
 	contentChanged := current.Revision.PluginHash != record.Revision.PluginHash
 	if !contentChanged && !record.ForceRevision {
 		return current, nil
-	}
-	if !record.ForceRevision && !contract.IsActiveStatus(current.Plugin.Status) {
-		return pluginstore.Snapshot{}, fmt.Errorf("%w: ARCHIVED Plugin content cannot be edited", pluginstore.ErrConflict)
 	}
 	if current.Plugin.CurrentRevisionNo == math.MaxUint32 || current.Plugin.LockVersion == math.MaxUint32 {
 		return pluginstore.Snapshot{}, fmt.Errorf("%w: Plugin version limit reached", pluginstore.ErrConflict)
@@ -345,7 +382,7 @@ WHERE scope_id = ? AND id = ? AND lock_version = ?`,
 	if err := requireOneRow(result); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	return get(ctx, tx, record.ScopeID, record.PluginID)
+	return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 }
 
 func setStatus(ctx context.Context, tx *sql.Tx, record pluginstore.StatusUpdateRecord) (pluginstore.Snapshot, error) {
@@ -365,7 +402,7 @@ func setStatus(ctx context.Context, tx *sql.Tx, record pluginstore.StatusUpdateR
 		return pluginstore.Snapshot{}, pluginstore.ErrConflict
 	}
 	if current.status == record.Status {
-		return get(ctx, tx, record.ScopeID, record.PluginID)
+		return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 	}
 	if current.lockVersion == math.MaxUint32 {
 		return pluginstore.Snapshot{}, fmt.Errorf("%w: Plugin version limit reached", pluginstore.ErrConflict)
@@ -380,7 +417,7 @@ WHERE scope_id = ? AND id = ? AND lock_version = ?`,
 	if err := requireOneRow(result); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	return get(ctx, tx, record.ScopeID, record.PluginID)
+	return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 }
 
 func replaceRelations(ctx context.Context, tx *sql.Tx, record pluginstore.RelationsUpdateRecord) (pluginstore.Snapshot, error) {
@@ -399,12 +436,12 @@ func replaceRelations(ctx context.Context, tx *sql.Tx, record pluginstore.Relati
 	if source.lockVersion != record.ExpectedLockVersion {
 		return pluginstore.Snapshot{}, pluginstore.ErrConflict
 	}
-	current, err := loadRelations(ctx, tx, record.ScopeID, record.PluginID)
+	current, err := loadRelationsForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 	if err != nil {
 		return pluginstore.Snapshot{}, err
 	}
 	if sameRelations(current, record.Relations) {
-		return get(ctx, tx, record.ScopeID, record.PluginID)
+		return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 	}
 	if source.lockVersion == math.MaxUint32 {
 		return pluginstore.Snapshot{}, fmt.Errorf("%w: Plugin version limit reached", pluginstore.ErrConflict)
@@ -429,7 +466,7 @@ WHERE scope_id = ? AND id = ? AND lock_version = ?`,
 	if err := requireOneRow(result); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	return get(ctx, tx, record.ScopeID, record.PluginID)
+	return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 }
 
 func insertPlugin(ctx context.Context, tx *sql.Tx, item pluginstore.Plugin) error {
@@ -468,12 +505,9 @@ VALUES (?, ?, ?, ?)`, relation.ScopeID, relation.SourcePluginID,
 	return nil
 }
 
-func setCurrentRevision(ctx context.Context, tx *sql.Tx, scopeID, pluginID string, revisionNo uint32, requireEmpty bool) error {
-	query := "UPDATE plugin SET current_revision_no = ? WHERE scope_id = ? AND id = ?"
-	if requireEmpty {
-		query += " AND current_revision_no IS NULL"
-	}
-	result, err := tx.ExecContext(ctx, query, revisionNo, scopeID, pluginID)
+func setCurrentRevision(ctx context.Context, tx *sql.Tx, scopeID, pluginID string, revisionNo uint32) error {
+	result, err := tx.ExecContext(ctx, `UPDATE plugin SET current_revision_no = ?
+WHERE scope_id = ? AND id = ? AND current_revision_no IS NULL`, revisionNo, scopeID, pluginID)
 	if err != nil {
 		return mapWriteError("set current Revision", err)
 	}
@@ -481,8 +515,16 @@ func setCurrentRevision(ctx context.Context, tx *sql.Tx, scopeID, pluginID strin
 }
 
 func get(ctx context.Context, db database, scopeID, pluginID string) (pluginstore.Snapshot, error) {
+	return getSnapshot(ctx, db, scopeID, pluginID, false)
+}
+
+func getForUpdate(ctx context.Context, tx *sql.Tx, scopeID, pluginID string) (pluginstore.Snapshot, error) {
+	return getSnapshot(ctx, tx, scopeID, pluginID, true)
+}
+
+func getSnapshot(ctx context.Context, db database, scopeID, pluginID string, forUpdate bool) (pluginstore.Snapshot, error) {
 	var result pluginstore.Snapshot
-	row := db.QueryRowContext(ctx, `
+	query := `
 SELECT p.scope_id, p.id, p.name, p.type, p.status,
        p.current_revision_no, p.lock_version, p.created_at, p.updated_at,
        r.revision_no, r.manifest_json, r.plugin_json, r.plugin_hash, r.created_by, r.created_at
@@ -490,7 +532,11 @@ FROM plugin p
 JOIN plugin_revision r
   ON r.scope_id = p.scope_id AND r.plugin_id = p.id
  AND r.revision_no = p.current_revision_no
-WHERE p.scope_id = ? AND p.id = ?`, scopeID, pluginID)
+WHERE p.scope_id = ? AND p.id = ?`
+	if forUpdate {
+		query += " FOR UPDATE"
+	}
+	row := db.QueryRowContext(ctx, query, scopeID, pluginID)
 	if err := row.Scan(&result.Plugin.ScopeID, &result.Plugin.PluginID, &result.Plugin.PluginName,
 		&result.Plugin.PluginType, &result.Plugin.Status, &result.Plugin.CurrentRevisionNo,
 		&result.Plugin.LockVersion, &result.Plugin.CreatedAt, &result.Plugin.UpdatedAt,
@@ -504,7 +550,7 @@ WHERE p.scope_id = ? AND p.id = ?`, scopeID, pluginID)
 	result.Revision.ScopeID = result.Plugin.ScopeID
 	result.Revision.PluginID = result.Plugin.PluginID
 	result.Revision.PluginType = result.Plugin.PluginType
-	relations, err := loadRelations(ctx, db, result.Plugin.ScopeID, result.Plugin.PluginID)
+	relations, err := loadRelations(ctx, db, result.Plugin.ScopeID, result.Plugin.PluginID, forUpdate)
 	if err != nil {
 		return pluginstore.Snapshot{}, err
 	}
@@ -531,11 +577,19 @@ WHERE r.scope_id = ? AND r.plugin_id = ? AND r.revision_no = ?`, scopeID, plugin
 	return result, nil
 }
 
-func loadRelations(ctx context.Context, db database, scopeID, pluginID string) ([]pluginstore.Relation, error) {
-	rows, err := db.QueryContext(ctx, `SELECT relation_type, target_plugin_id
+func loadRelationsForUpdate(ctx context.Context, tx *sql.Tx, scopeID, pluginID string) ([]pluginstore.Relation, error) {
+	return loadRelations(ctx, tx, scopeID, pluginID, true)
+}
+
+func loadRelations(ctx context.Context, db database, scopeID, pluginID string, forUpdate bool) ([]pluginstore.Relation, error) {
+	query := `SELECT relation_type, target_plugin_id
 FROM plugin_relation
 WHERE scope_id = ? AND source_plugin_id = ?
-ORDER BY relation_type, target_plugin_id`, scopeID, pluginID)
+ORDER BY relation_type, target_plugin_id`
+	if forUpdate {
+		query += " FOR UPDATE"
+	}
+	rows, err := db.QueryContext(ctx, query, scopeID, pluginID)
 	if err != nil {
 		return nil, storageError("list Relations", err)
 	}
@@ -721,7 +775,9 @@ func sameRelations(left, right []pluginstore.Relation) bool {
 }
 
 func listWhere(scopeID string, filter pluginstore.ListFilter) (string, []any) {
-	where := "WHERE p.scope_id = ?"
+	// A NULL pointer is valid only inside the Create transaction before the
+	// first Revision is attached. It must never affect a committed API page.
+	where := "WHERE p.scope_id = ? AND p.current_revision_no IS NOT NULL"
 	arguments := []any{scopeID}
 	if filter.PluginType != "" {
 		where += " AND p.type = ?"

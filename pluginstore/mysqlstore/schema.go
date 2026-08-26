@@ -7,7 +7,9 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	driver "github.com/go-sql-driver/mysql"
 )
@@ -26,6 +28,9 @@ func Install(ctx context.Context, db *sql.DB) (err error) {
 		return fmt.Errorf("mysqlstore: reserve install connection: %w", err)
 	}
 	defer connection.Close() //nolint:errcheck
+	if err := verifyTimeConfiguration(ctx, connection); err != nil {
+		return err
+	}
 
 	var lockName string
 	if err := connection.QueryRowContext(ctx, "SELECT CONCAT('opl:', LEFT(SHA2(DATABASE(), 256), 60))").Scan(&lockName); err != nil {
@@ -73,9 +78,61 @@ func VerifySchema(ctx context.Context, db queryer) error {
 		return err
 	}
 	if actual != expectedSchemaFingerprint {
-		return errors.New("mysqlstore: Plugin schema differs from the required baseline")
+		return fmt.Errorf("mysqlstore: Plugin schema differs from the required baseline: %s",
+			fingerprintDifference(expectedSchemaFingerprint, actual))
 	}
 	return nil
+}
+
+func verifyTimeConfiguration(ctx context.Context, db interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) error {
+	const layout = "2006-01-02 15:04:05.999999"
+	want := time.Date(2001, 2, 3, 4, 5, 6, 123456000, time.UTC)
+	var encoded string
+	if err := db.QueryRowContext(ctx, "SELECT CAST(? AS CHAR)", want).Scan(&encoded); err != nil {
+		return fmt.Errorf("mysqlstore: verify DSN time encoding: %w", err)
+	}
+	if encoded != want.Format(layout) {
+		return errors.New("mysqlstore: DSN must include parseTime=true&loc=UTC without time truncation")
+	}
+	var decoded time.Time
+	if err := db.QueryRowContext(ctx, "SELECT CAST(? AS DATETIME(6))", encoded).Scan(&decoded); err != nil {
+		return fmt.Errorf("mysqlstore: DSN must include parseTime=true&loc=UTC: %w", err)
+	}
+	if decoded.Location() != time.UTC || decoded.Format(layout) != encoded {
+		return errors.New("mysqlstore: DSN must include parseTime=true&loc=UTC without time truncation")
+	}
+	return nil
+}
+
+func fingerprintDifference(expected, actual string) string {
+	want := lineSet(expected)
+	got := lineSet(actual)
+	missing := setDifference(want, got)
+	unexpected := setDifference(got, want)
+	return fmt.Sprintf("missing=%q unexpected=%q", missing, unexpected)
+}
+
+func lineSet(value string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, line := range strings.Split(value, "\n") {
+		if line != "" {
+			result[line] = struct{}{}
+		}
+	}
+	return result
+}
+
+func setDifference(left, right map[string]struct{}) []string {
+	result := make([]string, 0)
+	for line := range left {
+		if _, exists := right[line]; !exists {
+			result = append(result, line)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 func duplicateConstraint(err error) bool {

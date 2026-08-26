@@ -1,4 +1,5 @@
 {
+  "max_nesting": 512,
   "cases": [
     {
       "name": "object-order-and-decimal",
@@ -6,7 +7,7 @@
       "canonical": "{\"a\":[true,null],\"b\":1.23}"
     },
     {
-      "name": "unicode-scalar-key-order",
+      "name": "unicode-scalar-order-differs-from-utf16",
       "input": "{\"𐀀\":1,\"\":2}",
       "canonical": "{\"\":2,\"𐀀\":1}"
     },

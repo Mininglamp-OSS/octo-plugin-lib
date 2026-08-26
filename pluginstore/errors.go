@@ -9,6 +9,10 @@ var (
 	ErrConflict        = errors.New("pluginstore: conflict")
 	ErrIntegrity       = errors.New("pluginstore: integrity failure")
 	ErrStorage         = errors.New("pluginstore: storage failure")
+	// ErrTransactionAborted marks a failure that forced a caller-owned
+	// transaction passed to WithTx to be rolled back. The whole host
+	// transaction must be restarted; it cannot be reused or committed.
+	ErrTransactionAborted = errors.New("pluginstore: transaction aborted")
 )
 
 type ErrorCode string
@@ -24,6 +28,8 @@ const (
 
 func Code(err error) ErrorCode {
 	switch {
+	case errors.Is(err, ErrTransactionAborted):
+		return CodeInternal
 	case errors.Is(err, ErrInvalidArgument):
 		return CodeInvalidArgument
 	case errors.Is(err, ErrNotFound):

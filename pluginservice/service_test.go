@@ -162,7 +162,7 @@ type stubStore struct {
 func (store *stubStore) WithTx(*sql.Tx) (pluginstore.Store, error) { return store, nil }
 func (store *stubStore) Create(_ context.Context, record pluginstore.CreateRecord) (pluginstore.Snapshot, error) {
 	store.created = record
-	return pluginstore.Snapshot{Plugin: record.Plugin, Revision: record.Revision, Relations: record.Relations}, nil
+	return pluginstore.Snapshot(record), nil
 }
 func (*stubStore) CreateGraph(context.Context, []pluginstore.CreateRecord) ([]pluginstore.Snapshot, error) {
 	return nil, nil

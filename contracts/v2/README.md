@@ -27,6 +27,8 @@ Plugin `status` 只允许 `ACTIVE` 与 `ARCHIVED`；创建时必须为 `ACTIVE`�
   `storage_uri`；`content_size` 上限为 `9007199254740991`。
 - Attachment path 必须唯一。JSON Schema 无法按对象属性表达该唯一性，因此
   `invalid/duplicate-path.json` 是所有语言实现都必须执行的语义 fixture。
+- 公共契约不冻结文档总字节数、附件总字节数或附件数量；宿主必须在自己的 HTTP、上传和
+  存储入口设置限额，再把数据交给 Lib。
 
 Connector 规则：`mcp` 与 `openconnector` 需要根目录 `mcp.json`；`cli` 需要
 `cli.json` 和至少一个 `skills/<name>/SKILL.md`；`skill-only` 必须包含根目录
@@ -45,8 +47,12 @@ Hash 前按 path 排序，数组输入顺序不改变结果；其他数组保留
 
 Canonical JSON 不等同于 RFC 8785/JCS。数字文本最长 128，指数范围为 -10000～10000；
 对象键排序为 O(k log k)，内存与规范化输出之和同阶，指数展开最多增加约 10,000 个字符。
-UUID 只校验小写标准文本形状，不校验 UUID version 或 variant。孤立 UTF-16 surrogate
-转义会被拒绝，避免不同语言替换行为造成 Hash 分叉。
+对象键按 Unicode scalar value 升序排列；对合法 UTF-8，这等价于按 UTF-8 字节序排列，
+不得直接使用 JavaScript/Java 的 UTF-16 code-unit 默认顺序。字符串按 Go
+`encoding/json` 规则编码，其中 `<`、`>`、`&`、U+2028、U+2029 使用 `\u` 转义。
+JSON 最多嵌套 512 个 object/array 容器。UUID 只校验小写标准文本形状，不校验 UUID
+version 或 variant。孤立 UTF-16 surrogate 转义会被拒绝，避免不同语言替换行为造成
+Hash 分叉。
 
 跨语言实现必须先执行 JSON Schema，再执行 `fixtures/semantic/invalid.json` 中按
 `validator` 标注的语义校验，并通过 golden Hash；仅通过 Schema 不代表契约完整。

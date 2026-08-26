@@ -12,15 +12,16 @@ import (
 )
 
 func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
+	ddl := SchemaSQL()
 	for _, table := range []string{"plugin", "plugin_revision", "plugin_relation"} {
-		if !strings.Contains(schemaSQL, "CREATE TABLE IF NOT EXISTS "+table+" (") {
+		if !strings.Contains(ddl, "CREATE TABLE IF NOT EXISTS "+table+" (") {
 			t.Errorf("schema does not create %s", table)
 		}
 	}
-	if count := strings.Count(schemaSQL, "CREATE TABLE IF NOT EXISTS "); count != 3 {
+	if count := strings.Count(ddl, "CREATE TABLE IF NOT EXISTS "); count != 3 {
 		t.Fatalf("schema creates %d tables, want 3", count)
 	}
-	relation := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS plugin_relation \((.*?)\) ENGINE`).FindStringSubmatch(schemaSQL)
+	relation := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS plugin_relation \((.*?)\) ENGINE`).FindStringSubmatch(ddl)
 	if len(relation) != 2 {
 		t.Fatal("plugin_relation DDL not found")
 	}
@@ -29,7 +30,7 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 			t.Errorf("plugin_relation still contains %s", removed)
 		}
 	}
-	if strings.Contains(schemaSQL, "plugin_file") {
+	if strings.Contains(ddl, "plugin_file") {
 		t.Fatal("schema still creates removed plugin_file")
 	}
 	for _, required := range []string{
@@ -40,7 +41,7 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 		"KEY idx_plugin_scope_updated (scope_id, updated_at DESC, id DESC)",
 		"FOREIGN KEY (scope_id, id, current_revision_no)",
 	} {
-		if !strings.Contains(schemaSQL, required) {
+		if !strings.Contains(ddl, required) {
 			t.Errorf("schema is missing %q", required)
 		}
 	}
@@ -51,6 +52,13 @@ func TestSchemaFingerprintIsPinned(t *testing.T) {
 		!strings.Contains(expectedSchemaFingerprint, "H|plugin_revision|chk_plugin_revision_plugin_hash|") ||
 		!strings.Contains(expectedSchemaFingerprint, "T|plugin|InnoDB|utf8mb4_0900_ai_ci") {
 		t.Fatal("schema fingerprint is incomplete")
+	}
+}
+
+func TestFingerprintDifferenceIsActionable(t *testing.T) {
+	got := fingerprintDifference("column-a\ncolumn-b", "column-b\ncolumn-c")
+	if got != `missing=["column-a"] unexpected=["column-c"]` {
+		t.Fatalf("fingerprintDifference() = %s", got)
 	}
 }
 

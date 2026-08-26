@@ -2,8 +2,6 @@ package plugin
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,7 +19,10 @@ var (
 	windowsDrivePathPattern = regexp.MustCompile(`^[A-Za-z]:`)
 )
 
-const maxSafeJSONInteger int64 = 1<<53 - 1
+const (
+	maxSafeJSONInteger int64 = 1<<53 - 1
+	maxJSONNesting           = 512
+)
 
 // DecodePlugin strictly decodes one public Plugin document and applies all
 // cross-field and hash invariants that JSON Schema cannot express.
@@ -461,7 +462,7 @@ func decodeJSON(raw []byte) (any, error) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	value, err := decodeValue(decoder)
+	value, err := decodeValue(decoder, 0)
 	if err != nil {
 		return nil, invalid(CodeInvalidJSON, "", err.Error())
 	}
@@ -551,7 +552,7 @@ func decodeHex4(input []byte) (uint16, bool) {
 	return value, true
 }
 
-func decodeValue(decoder *json.Decoder) (any, error) {
+func decodeValue(decoder *json.Decoder, depth int) (any, error) {
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
@@ -559,6 +560,9 @@ func decodeValue(decoder *json.Decoder) (any, error) {
 	delimiter, ok := token.(json.Delim)
 	if !ok {
 		return token, nil
+	}
+	if depth >= maxJSONNesting {
+		return nil, fmt.Errorf("JSON nesting exceeds %d containers", maxJSONNesting)
 	}
 	switch delimiter {
 	case '{':
@@ -575,7 +579,7 @@ func decodeValue(decoder *json.Decoder) (any, error) {
 			if _, duplicate := object[key]; duplicate {
 				return nil, fmt.Errorf("duplicate object key %q", key)
 			}
-			value, err := decodeValue(decoder)
+			value, err := decodeValue(decoder, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -588,7 +592,7 @@ func decodeValue(decoder *json.Decoder) (any, error) {
 	case '[':
 		var values []any
 		for decoder.More() {
-			value, err := decodeValue(decoder)
+			value, err := decodeValue(decoder, depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -601,9 +605,4 @@ func decodeValue(decoder *json.Decoder) (any, error) {
 	default:
 		return nil, fmt.Errorf("unexpected delimiter %q", delimiter)
 	}
-}
-
-func digestBytes(value []byte) string {
-	digest := sha256.Sum256(value)
-	return "sha256:" + hex.EncodeToString(digest[:])
 }

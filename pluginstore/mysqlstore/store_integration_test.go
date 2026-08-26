@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +78,180 @@ request_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KE
 	}
 	if _, err := service.Get(context.Background(), pluginservice.Scope{ID: scopeID}, pluginID); !errors.Is(err, pluginstore.ErrNotFound) {
 		t.Fatalf("rolled-back Plugin Get error = %v", err)
+	}
+}
+
+func TestFailedBoundCallRollsBackOnlyItsSavepoint(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("savepoint-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const rootID = "a1000000-0000-4000-8000-000000000001"
+	const existingID = "f1000000-0000-4000-8000-000000000001"
+	if _, err := service.Create(context.Background(), scope, actor, pluginservice.CreateInput{
+		PluginID: existingID, Content: nullPlugin(contract.TypeExpert, "Existing Expert"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS plugin_host_tx_probe (
+request_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY
+) ENGINE=InnoDB`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := service.WithTx(tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeID := fmt.Sprintf("before-%d", time.Now().UnixNano())
+	afterID := fmt.Sprintf("after-%d", time.Now().UnixNano())
+	if _, err := tx.Exec("INSERT INTO plugin_host_tx_probe (request_id) VALUES (?)", beforeID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = bound.CreateGraph(context.Background(), scope, actor, pluginservice.GraphCreateInput{
+		RootPluginID: rootID,
+		Nodes: []pluginservice.GraphNodeInput{
+			{PluginID: rootID, Content: nullPlugin(contract.TypeExpertTeam, "Savepoint Team"), Relations: []pluginservice.RelationInput{{RelationType: contract.RelationExpertTeamExpert, TargetPluginID: existingID}}},
+			{PluginID: existingID, Content: nullPlugin(contract.TypeExpert, "Duplicate Expert")},
+		},
+	})
+	if !errors.Is(err, pluginstore.ErrAlreadyExists) || errors.Is(err, pluginstore.ErrTransactionAborted) {
+		t.Fatalf("failing bound CreateGraph error = %v", err)
+	}
+	if _, err := tx.Exec("INSERT INTO plugin_host_tx_probe (request_id) VALUES (?)", afterID); err != nil {
+		t.Fatalf("host transaction unusable after savepoint rollback: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var hostRows, orphanRows int
+	if err := db.QueryRow("SELECT COUNT(*) FROM plugin_host_tx_probe WHERE request_id IN (?, ?)", beforeID, afterID).Scan(&hostRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow("SELECT COUNT(*) FROM plugin WHERE scope_id = ? AND id = ?", scope.ID, rootID).Scan(&orphanRows); err != nil {
+		t.Fatal(err)
+	}
+	if hostRows != 2 || orphanRows != 0 {
+		t.Fatalf("savepoint result: host rows=%d orphan rows=%d", hostRows, orphanRows)
+	}
+}
+
+func TestListExcludesIncompletePluginRows(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("incomplete-%d", time.Now().UnixNano())}
+	const pluginID = "a2000000-0000-4000-8000-000000000001"
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if _, err := db.Exec(`INSERT INTO plugin
+(scope_id, id, name, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`, scope.ID, pluginID, "Incomplete Skill",
+		contract.TypeSkill, contract.StatusActive, now, now); err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.List(context.Background(), scope, pluginservice.ListFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("List exposed incomplete Plugin: total=%d items=%d", page.Total, len(page.Items))
+	}
+}
+
+func TestBoundWriteUsesCurrentReadAfterEarlierSnapshot(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("current-read-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const pluginID = "b1000000-0000-4000-8000-000000000001"
+	first := rawSkill("Snapshot Skill", "first")
+	second := rawSkill("Snapshot Skill", "second")
+	if _, err := service.Create(context.Background(), scope, actor, pluginservice.CreateInput{PluginID: pluginID, Content: first}); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	bound, _ := service.WithTx(tx)
+	if _, err := bound.Get(context.Background(), scope, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	outside, err := service.Update(context.Background(), scope, actor, pluginID, pluginservice.UpdateInput{
+		ExpectedLockVersion: 1, Content: second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside, err := bound.Update(context.Background(), scope, actor, pluginID, pluginservice.UpdateInput{
+		ExpectedLockVersion: outside.Plugin.LockVersion, Content: first,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inside.Revision.RevisionNo != 3 || inside.Plugin.LockVersion != 3 {
+		t.Fatalf("bound current read returned stale snapshot: %#v", inside)
+	}
+}
+
+func TestInstallRejectsInvalidTimeConfiguration(t *testing.T) {
+	dsn := os.Getenv("OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if dsn == "" {
+		if os.Getenv("OCTO_PLUGIN_LIB_REQUIRE_MYSQL") == "1" {
+			t.Fatal("OCTO_PLUGIN_LIB_MYSQL_DSN is required")
+		}
+		t.Skip("OCTO_PLUGIN_LIB_MYSQL_DSN is not set")
+	}
+	base, err := driver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newYork, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutParseTime := *base
+	withoutParseTime.ParseTime = false
+	wrongLocation := *base
+	wrongLocation.ParseTime = true
+	wrongLocation.Loc = newYork
+	truncated := base.FormatDSN()
+	separator := "?"
+	if strings.Contains(truncated, "?") {
+		separator = "&"
+	}
+	truncated += separator + "timeTruncate=1s"
+	for name, invalidDSN := range map[string]string{
+		"parseTime disabled": withoutParseTime.FormatDSN(),
+		"non-UTC location":   wrongLocation.FormatDSN(),
+		"time truncation":    truncated,
+	} {
+		t.Run(name, func(t *testing.T) {
+			database, err := sql.Open("mysql", invalidDSN)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close() //nolint:errcheck
+			err = Install(context.Background(), database)
+			if err == nil || !strings.Contains(err.Error(), "parseTime=true&loc=UTC") {
+				t.Fatalf("Install error = %v", err)
+			}
+		})
 	}
 }
 
@@ -304,6 +479,9 @@ func integrationDatabase(t *testing.T, variable string) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv(variable)
 	if dsn == "" {
+		if os.Getenv("OCTO_PLUGIN_LIB_REQUIRE_MYSQL") == "1" {
+			t.Fatal(variable + " is required")
+		}
 		t.Skip(variable + " is not set")
 	}
 	db, err := sql.Open("mysql", dsn)
@@ -315,6 +493,15 @@ func integrationDatabase(t *testing.T, variable string) *sql.DB {
 		t.Fatal(err)
 	}
 	return db
+}
+
+func nullPlugin(pluginType contract.Type, name string) pluginservice.ContentInput {
+	return pluginservice.ContentInput{
+		PluginType: pluginType,
+		ManifestJSON: []byte(`{"$schema":"cowork-plugin-manifest-2.0.json","plugin_name":"` + name +
+			`","plugin_type":"` + string(pluginType) + `","name":"` + name + `","description":""}`),
+		PluginJSON: []byte("null"),
+	}
 }
 
 func rawSkill(name, description string) pluginservice.ContentInput {

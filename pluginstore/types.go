@@ -129,8 +129,10 @@ type RelationsUpdateRecord struct {
 	UpdatedAt           time.Time
 }
 
-// Store owns atomic persistence. A transaction-bound Store never commits or
-// rolls back the caller's transaction.
+// Store owns atomic persistence. A transaction-bound Store uses a savepoint
+// per call and leaves commit/rollback to the caller. If savepoint recovery
+// fails, the Store rolls back the caller's transaction and returns an error
+// matching ErrTransactionAborted rather than leaving partial Plugin writes.
 type Store interface {
 	WithTx(*sql.Tx) (Store, error)
 	Create(context.Context, CreateRecord) (Snapshot, error)

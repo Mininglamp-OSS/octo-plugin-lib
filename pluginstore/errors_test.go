@@ -20,6 +20,7 @@ func TestStableErrorCodes(t *testing.T) {
 		{pluginstore.ErrConflict, pluginstore.CodeConflict},
 		{pluginstore.ErrIntegrity, pluginstore.CodeIntegrity},
 		{pluginstore.ErrStorage, pluginstore.CodeInternal},
+		{fmt.Errorf("%w: %w", pluginstore.ErrConflict, pluginstore.ErrTransactionAborted), pluginstore.CodeInternal},
 	}
 	for _, test := range tests {
 		if got := pluginstore.Code(fmt.Errorf("wrapped: %w", test.err)); got != test.code {

@@ -27,7 +27,8 @@ func New(store pluginstore.Store) (*Service, error) {
 }
 
 // WithTx lets a host commit Plugin state with its own audit, idempotency or
-// projection rows. The caller owns commit and rollback.
+// projection rows. The caller owns commit and rollback; each library write is
+// isolated by a savepoint as described by pluginstore.Store.WithTx.
 func (service *Service) WithTx(tx *sql.Tx) (*Service, error) {
 	if service == nil || service.store == nil || tx == nil {
 		return nil, fmt.Errorf("%w: transaction is required", pluginstore.ErrInvalidArgument)

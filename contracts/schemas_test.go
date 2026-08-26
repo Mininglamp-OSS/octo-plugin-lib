@@ -3,7 +3,8 @@ package contracts
 import (
 	"bytes"
 	"encoding/json"
-	"path/filepath"
+	"io/fs"
+	"path"
 	"testing"
 
 	"github.com/dlclark/regexp2"
@@ -64,25 +65,31 @@ func TestSchemasCompileAndFixturesConform(t *testing.T) {
 		compiled[name] = schema
 	}
 
-	valid, err := filepath.Glob("v2/fixtures/valid/*.json")
+	valid, err := fs.Glob(files, "v2/fixtures/valid/*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range valid {
-		t.Run("valid/"+filepath.Base(path), func(t *testing.T) {
-			validateFixture(t, compiled[fixtureSchema(path)], path, true)
+	if len(valid) == 0 {
+		t.Fatal("no embedded valid fixtures found")
+	}
+	for _, fixturePath := range valid {
+		t.Run("valid/"+path.Base(fixturePath), func(t *testing.T) {
+			validateFixture(t, compiled[fixtureSchema(t, fixturePath)], fixturePath, true)
 		})
 	}
-	invalid, err := filepath.Glob("v2/fixtures/invalid/*.json")
+	invalid, err := fs.Glob(files, "v2/fixtures/invalid/*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range invalid {
-		t.Run("invalid/"+filepath.Base(path), func(t *testing.T) {
+	if len(invalid) == 0 {
+		t.Fatal("no embedded invalid fixtures found")
+	}
+	for _, fixturePath := range invalid {
+		t.Run("invalid/"+path.Base(fixturePath), func(t *testing.T) {
 			// JSON Schema cannot express uniqueness by Attachment path;
 			// every implementation must apply the semantic fixture after Schema validation.
-			validBySchema := filepath.Base(path) == "duplicate-path.json"
-			validateFixture(t, compiled[fixtureSchema(path)], path, validBySchema)
+			validBySchema := path.Base(fixturePath) == "duplicate-path.json"
+			validateFixture(t, compiled[fixtureSchema(t, fixturePath)], fixturePath, validBySchema)
 		})
 	}
 }
@@ -128,16 +135,22 @@ func TestRevisionSchemaFixturesConform(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	valid, err := filepath.Glob("revision/v2/fixtures/valid/*.json")
+	valid, err := fs.Glob(files, "revision/v2/fixtures/valid/*.json")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(valid) == 0 {
+		t.Fatal("no embedded valid Revision fixtures found")
 	}
 	for _, path := range valid {
 		t.Run(path, func(t *testing.T) { validateFixture(t, schema, path, true) })
 	}
-	invalid, err := filepath.Glob("revision/v2/fixtures/invalid/*.json")
+	invalid, err := fs.Glob(files, "revision/v2/fixtures/invalid/*.json")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(invalid) == 0 {
+		t.Fatal("no embedded invalid Revision fixtures found")
 	}
 	for _, path := range invalid {
 		t.Run(path, func(t *testing.T) { validateFixture(t, schema, path, false) })
@@ -163,16 +176,20 @@ func validateFixture(t *testing.T, schema *jsonschema.Schema, path string, valid
 	}
 }
 
-func fixtureSchema(path string) string {
-	switch filepath.Base(path) {
+func fixtureSchema(t *testing.T, fixturePath string) string {
+	t.Helper()
+	switch path.Base(fixturePath) {
 	case "manifest-description-null.json", "manifest-required.json", "unicode-whitespace-manifest-name.json":
 		return "manifest"
 	case "relation.json", "relation-type.json", "relation-unknown-field.json":
 		return "relation"
-	case "connector-null.json", "content-size-overflow.json", "control-path.json", "duplicate-path.json", "empty-mime-part.json", "forbidden-null-content.json", "mime-type.json", "null-content-hash.json", "null-content-size.json", "parent-path.json", "path-too-long.json", "raw-derived-metadata.json", "storage-exponent-size.json", "storage-forbidden-null.json", "storage-hash-format.json", "storage-uri.json", "trailing-slash-path.json", "unicode-whitespace-connector-source.json", "unicode-whitespace-mime-type.json", "unknown-package-field.json", "windows-drive-path.json":
+	case "connector-null.json", "content-size-overflow.json", "control-path.json", "duplicate-path.json", "empty-mime-part.json", "mime-type.json", "null-content-hash.json", "null-content-size.json", "parent-path.json", "path-too-long.json", "raw-derived-metadata.json", "storage-exponent-size.json", "storage-hash-format.json", "storage-uri.json", "trailing-slash-path.json", "unicode-whitespace-connector-source.json", "unicode-whitespace-mime-type.json", "unknown-package-field.json", "windows-drive-path.json":
 		return "package"
-	default:
+	case "connector-cli.json", "connector-mcp.json", "connector-openconnector.json", "connector-skill-only.json", "expert-team.json", "expert.json", "skill.json", "plugin-id.json", "plugin-status.json", "unicode-whitespace-plugin-name.json":
 		return "plugin"
+	default:
+		t.Fatalf("fixture %q is not assigned to a schema", fixturePath)
+		return ""
 	}
 }
 

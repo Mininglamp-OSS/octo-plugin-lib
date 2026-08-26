@@ -27,6 +27,8 @@ Lib 不定义跨服务 HTTP DTO，不让 Loop 直连 Market 数据库/Bucket，�
 
 1. 使用 `contracts/v2` 和 `contracts/revision/v2`。
 2. 运行 `pluginconformance.Run` 覆盖 CRUD、CAS、Revision、关系和图原子性。
-3. MySQL DSN 使用 `parseTime=true&loc=UTC`，启动时执行 `VerifySchema`。
+   该包只从 Market 的 `_test.go` 引用，不进入生产二进制。
+3. MySQL DSN 使用 `parseTime=true&loc=UTC`；启动时调用 `Install` 执行连接配置和结构校验。
 4. 通过 JSON Schema invalid fixtures、`fixtures/semantic/invalid.json` 和 golden Hash。
-5. 在 Market 私有层验证 Space 可见性、发布状态、对象字节和调用身份。
+5. 在 Market 私有层限制请求体、附件总量和数量，并验证 Space 可见性、发布状态、对象字节
+   和调用身份。
