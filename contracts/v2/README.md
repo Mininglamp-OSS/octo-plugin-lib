@@ -45,8 +45,9 @@ Connector 规则：`mcp` 与 `openconnector` 需要根目录 `mcp.json`；`cli` 
 Hash 前按 path 排序，数组输入顺序不改变结果；其他数组保留顺序。算法不读取 storage
 对象字节，也不包含宿主 Bucket/object key。
 
-Canonical JSON 不等同于 RFC 8785/JCS。数字文本最长 128，指数范围为 -10000～10000；
-对象键排序为 O(k log k)，内存与规范化输出之和同阶，指数展开最多增加约 10,000 个字符。
+Canonical JSON 不等同于 RFC 8785/JCS。单个数字词法及规范化结果最长 10,240 字符，指数
+范围为 -10000～10000；一份 JSON 文档累计数字展开增量最多 10,240 字符，避免少量指数
+词法放大为无界内存。对象键排序为 O(k log k)，内存与规范化输出之和同阶。
 对象键按 Unicode scalar value 升序排列；对合法 UTF-8，这等价于按 UTF-8 字节序排列，
 不得直接使用 JavaScript/Java 的 UTF-16 code-unit 默认顺序。字符串按 Go
 `encoding/json` 规则编码，其中 `<`、`>`、`&`、U+2028、U+2029 使用 `\u` 转义。

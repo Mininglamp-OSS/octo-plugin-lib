@@ -22,8 +22,8 @@ type API interface {
 	Get(context.Context, pluginservice.Scope, string) (pluginservice.Snapshot, error)
 	List(context.Context, pluginservice.Scope, pluginservice.ListFilter) (pluginservice.PluginPage, error)
 	Update(context.Context, pluginservice.Scope, pluginservice.Actor, string, pluginservice.UpdateInput) (pluginservice.Snapshot, error)
-	SetStatus(context.Context, pluginservice.Scope, pluginservice.Actor, string, pluginservice.SetStatusInput) (pluginservice.Snapshot, error)
-	ReplaceRelations(context.Context, pluginservice.Scope, pluginservice.Actor, string, pluginservice.ReplaceRelationsInput) (pluginservice.Snapshot, error)
+	SetStatus(context.Context, pluginservice.Scope, string, pluginservice.SetStatusInput) (pluginservice.Snapshot, error)
+	ReplaceRelations(context.Context, pluginservice.Scope, string, pluginservice.ReplaceRelationsInput) (pluginservice.Snapshot, error)
 	GetRevision(context.Context, pluginservice.Scope, string, uint32) (pluginservice.Revision, error)
 	ListRevisions(context.Context, pluginservice.Scope, string, pluginservice.PageRequest) (pluginservice.RevisionPage, error)
 	Restore(context.Context, pluginservice.Scope, pluginservice.Actor, string, uint32, pluginservice.RestoreInput) (pluginservice.Snapshot, error)
@@ -64,7 +64,7 @@ func Run(t *testing.T, api API) {
 		!noOp.Plugin.UpdatedAt.Equal(skill.Plugin.UpdatedAt) {
 		t.Fatalf("no-op Update = %#v, %v", noOp, err)
 	}
-	archived, err := api.SetStatus(ctx, scope, actor, skillID, pluginservice.SetStatusInput{
+	archived, err := api.SetStatus(ctx, scope, skillID, pluginservice.SetStatusInput{
 		Status: contract.StatusArchived, ExpectedLockVersion: 1,
 	})
 	if err != nil || archived.Plugin.LockVersion != 2 || archived.Revision.RevisionNo != 1 {
@@ -87,7 +87,7 @@ func Run(t *testing.T, api API) {
 		restored.Plugin.Status != contract.StatusArchived {
 		t.Fatalf("Restore = %#v, %v", restored, err)
 	}
-	active, err := api.SetStatus(ctx, scope, actor, skillID, pluginservice.SetStatusInput{
+	active, err := api.SetStatus(ctx, scope, skillID, pluginservice.SetStatusInput{
 		Status: contract.StatusActive, ExpectedLockVersion: 3,
 	})
 	if err != nil || active.Plugin.LockVersion != 4 || active.Revision.RevisionNo != 2 {
@@ -101,7 +101,7 @@ func Run(t *testing.T, api API) {
 		changed.Plugin.PluginName != "Conformance Skill v2" {
 		t.Fatalf("content Update = %#v, %v", changed, err)
 	}
-	if _, err := api.SetStatus(ctx, scope, actor, skillID, pluginservice.SetStatusInput{
+	if _, err := api.SetStatus(ctx, scope, skillID, pluginservice.SetStatusInput{
 		Status: contract.StatusArchived, ExpectedLockVersion: 4,
 	}); !errors.Is(err, pluginstore.ErrConflict) {
 		t.Fatalf("stale CAS error = %v", err)
@@ -123,7 +123,7 @@ func Run(t *testing.T, api API) {
 	if err != nil || len(related.Relations) != 1 {
 		t.Fatalf("Create related Expert = %#v, %v", related, err)
 	}
-	same, err := api.ReplaceRelations(ctx, scope, actor, expertID, pluginservice.ReplaceRelationsInput{
+	same, err := api.ReplaceRelations(ctx, scope, expertID, pluginservice.ReplaceRelationsInput{
 		ExpectedLockVersion: 1,
 		Relations: []pluginservice.RelationInput{{
 			RelationType: contract.RelationExpertSkill, TargetPluginID: skillID,
@@ -132,14 +132,14 @@ func Run(t *testing.T, api API) {
 	if err != nil || same.Plugin.LockVersion != 1 {
 		t.Fatalf("no-op ReplaceRelations = %#v, %v", same, err)
 	}
-	detached, err := api.ReplaceRelations(ctx, scope, actor, expertID, pluginservice.ReplaceRelationsInput{
+	detached, err := api.ReplaceRelations(ctx, scope, expertID, pluginservice.ReplaceRelationsInput{
 		ExpectedLockVersion: 1, Relations: []pluginservice.RelationInput{},
 	})
 	if err != nil || detached.Plugin.LockVersion != 2 || len(detached.Relations) != 0 ||
 		detached.Revision.RevisionNo != 1 {
 		t.Fatalf("remove Relation = %#v, %v", detached, err)
 	}
-	archivedExpert, err := api.SetStatus(ctx, scope, actor, expertID, pluginservice.SetStatusInput{
+	archivedExpert, err := api.SetStatus(ctx, scope, expertID, pluginservice.SetStatusInput{
 		Status: contract.StatusArchived, ExpectedLockVersion: 2,
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func Run(t *testing.T, api API) {
 	if err != nil || restoredExpert.Revision.RevisionNo != 2 || len(restoredExpert.Relations) != 0 {
 		t.Fatalf("Restore must preserve current Relations = %#v, %v", restoredExpert, err)
 	}
-	if _, err := api.ReplaceRelations(ctx, scope, actor, expertID, pluginservice.ReplaceRelationsInput{
+	if _, err := api.ReplaceRelations(ctx, scope, expertID, pluginservice.ReplaceRelationsInput{
 		ExpectedLockVersion: restoredExpert.Plugin.LockVersion,
 		Relations: []pluginservice.RelationInput{{
 			RelationType: contract.RelationExpertSkill, TargetPluginID: skillID,
@@ -160,7 +160,7 @@ func Run(t *testing.T, api API) {
 		t.Fatalf("ARCHIVED source accepted new Relation: %v", err)
 	}
 
-	archivedSkill, err := api.SetStatus(ctx, scope, actor, skillID, pluginservice.SetStatusInput{
+	archivedSkill, err := api.SetStatus(ctx, scope, skillID, pluginservice.SetStatusInput{
 		Status: contract.StatusArchived, ExpectedLockVersion: changed.Plugin.LockVersion,
 	})
 	if err != nil {

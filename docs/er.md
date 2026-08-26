@@ -16,6 +16,7 @@ erDiagram
         varchar_40 scope_id PK,FK "current_revision 1/3"
         char_36 id PK,FK "current_revision 2/3"
         varchar_160 name
+        longtext description "current Manifest projection"
         varchar_16 type
         varchar_16 status
         int_unsigned current_revision_no FK "current_revision 3/3"
@@ -28,8 +29,8 @@ erDiagram
         varchar_40 scope_id PK,FK
         char_36 plugin_id PK,FK
         int_unsigned revision_no PK
-        json manifest_json
-        json plugin_json
+        longtext manifest_json
+        longtext plugin_json
         char_71 plugin_hash
         varchar_191 created_by
         datetime_6 created_at
@@ -58,5 +59,9 @@ erDiagram
   `AUTO_INCREMENT`。
 - `lock_version` 覆盖内容、状态和关系三类当前态修改。
 - Relation 是当前绑定，不属于 Revision；Restore 只恢复内容，不回滚关系。
+- `plugin.description` 是当前 Manifest description 的查询投影；Service 在同一事务更新，
+  Store 读取时校验一致，Manifest 仍是权威真源。
+- `manifest_json/plugin_json` 是 `utf8mb4_bin LONGTEXT`，保存 Canonical JSON；Schema、
+  语义校验与 `plugin_hash` 由 Lib 负责，不让 MySQL JSON 数值解析器缩窄公共契约。
 - 无 `plugin_file` 表。Attachment 的物理位置由宿主 Content Store 根据
   `scope_id + content_hash` 解析。

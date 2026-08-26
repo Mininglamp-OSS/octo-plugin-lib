@@ -2,6 +2,8 @@ module github.com/Mininglamp-OSS/octo-plugin-lib
 
 go 1.25.0
 
+toolchain go1.25.11
+
 require (
 	github.com/dlclark/regexp2 v1.11.0
 	github.com/go-sql-driver/mysql v1.10.0

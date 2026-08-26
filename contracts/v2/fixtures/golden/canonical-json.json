@@ -1,5 +1,7 @@
 {
   "max_nesting": 512,
+  "max_number_characters": 10240,
+  "max_total_number_expansion": 10240,
   "cases": [
     {
       "name": "object-order-and-decimal",
@@ -17,12 +19,20 @@
       "canonical": "[1000,0.012,0,0]"
     },
     {
+      "name": "exact-high-precision-decimal",
+      "input": "123456789012345678901234567890.12345678901234567890",
+      "canonical": "123456789012345678901234567890.1234567890123456789"
+    },
+    {
       "name": "go-json-string-escaping",
       "input": "{\"text\":\"<>&\\u2028\\u2029\"}",
       "canonical": "{\"text\":\"\\u003c\\u003e\\u0026\\u2028\\u2029\"}"
     }
   ],
   "invalid_inputs": [
+    "1e10001",
+    "1e-10001",
+    "[1e10000,1e10000]",
     "{\"text\":\"\\ud800\"}",
     "{\"text\":\"\\udc00\"}",
     "{\"text\":\"\\ud800x\"}"

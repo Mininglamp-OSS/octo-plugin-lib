@@ -3,6 +3,7 @@
 `octo-plugin-lib` 是供 Market、Loop、Buddy 及其他 Go 宿主进程直接引用的公共 Plugin
 领域库。它统一四类 Plugin 的 JSON Schema、规范化与 Hash 规则，以及宿主私有 MySQL
 中的三表 CRUD/Revision/Relation 实现；它不是独立服务，不提供 HTTP、鉴权、审计或对象存储。
+调用方最低 Go 语言版本为 1.25；本仓库建议使用 Go 1.25.11 工具链验证。
 
 ## 公共能力
 
@@ -13,6 +14,7 @@
 - 三表存储：`plugin`、`plugin_revision`、`plugin_relation`
 - 原子创建单 Plugin 或闭合依赖图、内容更新、状态 CAS、关系替换、历史恢复
 - Draft 2020-12 Schema、跨语言 fixtures、Canonical JSON 与 `plugin_hash`
+- `utf8mb4_bin LONGTEXT` 精确保留 Canonical JSON，完整内容读写均执行契约及 Hash 校验
 - MySQL 8 安装、精确结构指纹和可复用 conformance suite
 
 ## 使用边界

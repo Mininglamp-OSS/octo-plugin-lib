@@ -76,7 +76,7 @@ func TestStatusAndScopeValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	invalidStatus := contract.Status("DISABLED")
-	if _, err := service.SetStatus(context.Background(), Scope{ID: "scope-test"}, Actor{ID: "actor-test"},
+	if _, err := service.SetStatus(context.Background(), Scope{ID: "scope-test"},
 		testPluginID, SetStatusInput{Status: invalidStatus, ExpectedLockVersion: 1}); !errors.Is(err, pluginstore.ErrInvalidArgument) {
 		t.Fatalf("SetStatus invalid status error = %v", err)
 	}
@@ -113,7 +113,7 @@ func TestReplaceRelationsValidatesAndSorts(t *testing.T) {
 		ScopeID: "scope-test", PluginID: testPluginID, PluginType: contract.TypeExpert,
 	}}}
 	service, _ := New(store)
-	_, err := service.ReplaceRelations(context.Background(), Scope{ID: "scope-test"}, Actor{ID: "actor-test"},
+	_, err := service.ReplaceRelations(context.Background(), Scope{ID: "scope-test"},
 		testPluginID, ReplaceRelationsInput{ExpectedLockVersion: 1, Relations: []RelationInput{
 			{RelationType: contract.RelationExpertSkill, TargetPluginID: "30000000-0000-4000-8000-000000000003"},
 			{RelationType: contract.RelationExpertConnector, TargetPluginID: "20000000-0000-4000-8000-000000000002"},
@@ -126,7 +126,7 @@ func TestReplaceRelationsValidatesAndSorts(t *testing.T) {
 		got[1].RelationType != contract.RelationExpertSkill {
 		t.Fatalf("Relations = %#v", got)
 	}
-	_, err = service.ReplaceRelations(context.Background(), Scope{ID: "scope-test"}, Actor{ID: "actor-test"},
+	_, err = service.ReplaceRelations(context.Background(), Scope{ID: "scope-test"},
 		testPluginID, ReplaceRelationsInput{ExpectedLockVersion: 1, Relations: []RelationInput{
 			{RelationType: contract.RelationExpertSkill, TargetPluginID: "30000000-0000-4000-8000-000000000003"},
 			{RelationType: contract.RelationExpertSkill, TargetPluginID: "30000000-0000-4000-8000-000000000003"},

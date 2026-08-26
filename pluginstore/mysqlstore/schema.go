@@ -149,20 +149,21 @@ C|plugin_relation|004|target_plugin_id|char(36)|NO|<NULL>||ascii|ascii_bin
 C|plugin_revision|001|scope_id|varchar(40)|NO|<NULL>||ascii|ascii_bin
 C|plugin_revision|002|plugin_id|char(36)|NO|<NULL>||ascii|ascii_bin
 C|plugin_revision|003|revision_no|int unsigned|NO|<NULL>|||
-C|plugin_revision|004|manifest_json|json|NO|<NULL>|||
-C|plugin_revision|005|plugin_json|json|NO|<NULL>|||
+C|plugin_revision|004|manifest_json|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
+C|plugin_revision|005|plugin_json|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
 C|plugin_revision|006|plugin_hash|char(71)|NO|<NULL>||ascii|ascii_bin
 C|plugin_revision|007|created_by|varchar(191)|NO|<NULL>||utf8mb4|utf8mb4_0900_ai_ci
 C|plugin_revision|008|created_at|datetime(6)|NO|<NULL>|||
 C|plugin|001|scope_id|varchar(40)|NO|<NULL>||ascii|ascii_bin
 C|plugin|002|id|char(36)|NO|<NULL>||ascii|ascii_bin
 C|plugin|003|name|varchar(160)|NO|<NULL>||utf8mb4|utf8mb4_0900_ai_ci
-C|plugin|004|type|varchar(16)|NO|<NULL>||ascii|ascii_bin
-C|plugin|005|status|varchar(16)|NO|<NULL>||ascii|ascii_bin
-C|plugin|006|current_revision_no|int unsigned|YES|<NULL>|||
-C|plugin|007|lock_version|int unsigned|NO|<NULL>|||
-C|plugin|008|created_at|datetime(6)|NO|<NULL>|||
-C|plugin|009|updated_at|datetime(6)|NO|<NULL>|||
+C|plugin|004|description|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
+C|plugin|005|type|varchar(16)|NO|<NULL>||ascii|ascii_bin
+C|plugin|006|status|varchar(16)|NO|<NULL>||ascii|ascii_bin
+C|plugin|007|current_revision_no|int unsigned|YES|<NULL>|||
+C|plugin|008|lock_version|int unsigned|NO|<NULL>|||
+C|plugin|009|created_at|datetime(6)|NO|<NULL>|||
+C|plugin|010|updated_at|datetime(6)|NO|<NULL>|||
 F|plugin_relation|fk_plugin_relation_source|001|scope_id|plugin|scope_id|NO ACTION|CASCADE
 F|plugin_relation|fk_plugin_relation_source|002|source_plugin_id|plugin|id|NO ACTION|CASCADE
 F|plugin_relation|fk_plugin_relation_target|001|scope_id|plugin|scope_id|NO ACTION|RESTRICT

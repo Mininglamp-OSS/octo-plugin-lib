@@ -120,12 +120,12 @@ func (service *Service) Update(ctx context.Context, scope Scope, actor Actor, pl
 	})
 }
 
-func (service *Service) SetStatus(ctx context.Context, scope Scope, actor Actor, pluginID string, input SetStatusInput) (Snapshot, error) {
-	if err := validateScopeActor(scope, actor); err != nil {
+func (service *Service) SetStatus(ctx context.Context, scope Scope, pluginID string, input SetStatusInput) (Snapshot, error) {
+	if err := validateScopePlugin(scope, pluginID); err != nil {
 		return Snapshot{}, err
 	}
-	if err := validatePluginAndLock(pluginID, input.ExpectedLockVersion); err != nil {
-		return Snapshot{}, err
+	if input.ExpectedLockVersion == 0 {
+		return Snapshot{}, fmt.Errorf("%w: expected_lock_version is required", pluginstore.ErrInvalidArgument)
 	}
 	if err := contract.ValidateStatus(input.Status); err != nil {
 		return Snapshot{}, invalid(err)
@@ -136,12 +136,12 @@ func (service *Service) SetStatus(ctx context.Context, scope Scope, actor Actor,
 	})
 }
 
-func (service *Service) ReplaceRelations(ctx context.Context, scope Scope, actor Actor, pluginID string, input ReplaceRelationsInput) (Snapshot, error) {
-	if err := validateScopeActor(scope, actor); err != nil {
+func (service *Service) ReplaceRelations(ctx context.Context, scope Scope, pluginID string, input ReplaceRelationsInput) (Snapshot, error) {
+	if err := validateScopePlugin(scope, pluginID); err != nil {
 		return Snapshot{}, err
 	}
-	if err := validatePluginAndLock(pluginID, input.ExpectedLockVersion); err != nil {
-		return Snapshot{}, err
+	if input.ExpectedLockVersion == 0 {
+		return Snapshot{}, fmt.Errorf("%w: expected_lock_version is required", pluginstore.ErrInvalidArgument)
 	}
 	current, err := service.store.Get(ctx, scope.ID, pluginID)
 	if err != nil {
