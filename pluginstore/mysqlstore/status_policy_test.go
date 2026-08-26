@@ -3,10 +3,27 @@ package mysqlstore
 import (
 	"errors"
 	"testing"
+	"time"
 
 	contract "github.com/Mininglamp-OSS/octo-plugin-lib/plugin"
 	"github.com/Mininglamp-OSS/octo-plugin-lib/pluginstore"
 )
+
+func TestStoreIdentifierValidationPreservesContractDetails(t *testing.T) {
+	for name, err := range map[string]error{
+		"scope":  validateStoreIdentity("bad scope", "10000000-0000-4000-8000-000000000001"),
+		"plugin": validateStoreIdentity("scope-1", "NOT-A-UUID"),
+		"actor": validateRevisionRecord(pluginstore.Revision{
+			ScopeID: "scope-1", PluginID: "10000000-0000-4000-8000-000000000001",
+			CreatedBy: "bad actor", CreatedAt: time.Now().UTC(),
+		}),
+	} {
+		var violation *contract.ValidationError
+		if !errors.Is(err, pluginstore.ErrInvalidArgument) || !errors.As(err, &violation) {
+			t.Errorf("%s error = %v, want invalid argument with contract details", name, err)
+		}
+	}
+}
 
 func TestNewRelationRequiresActiveSourceAndTarget(t *testing.T) {
 	relation := pluginstore.Relation{

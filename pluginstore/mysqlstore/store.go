@@ -433,8 +433,10 @@ WHERE scope_id = ? AND id = ? AND lock_version = ?`,
 }
 
 func setStatus(ctx context.Context, tx *sql.Tx, record pluginstore.StatusUpdateRecord) (pluginstore.Snapshot, error) {
-	if record.ScopeID == "" || record.PluginID == "" || record.ExpectedLockVersion == 0 ||
-		record.UpdatedAt.IsZero() || !contract.IsValidStatus(record.Status) {
+	if err := validateStoreIdentity(record.ScopeID, record.PluginID); err != nil {
+		return pluginstore.Snapshot{}, err
+	}
+	if record.ExpectedLockVersion == 0 || record.UpdatedAt.IsZero() || !contract.IsValidStatus(record.Status) {
 		return pluginstore.Snapshot{}, pluginstore.ErrInvalidArgument
 	}
 	locked, err := lockPluginIDs(ctx, tx, record.ScopeID, []string{record.PluginID})
@@ -758,8 +760,10 @@ func validateRelations(sourceType contract.Type, sourceStatus contract.Status, c
 }
 
 func validateCreateRecord(record pluginstore.CreateRecord) error {
-	if record.Plugin.ScopeID == "" || record.Plugin.PluginID == "" || record.Plugin.PluginName == "" ||
-		record.Plugin.Status != contract.StatusActive || record.Plugin.CurrentRevisionNo != 1 ||
+	if err := validateStoreIdentity(record.Plugin.ScopeID, record.Plugin.PluginID); err != nil {
+		return err
+	}
+	if record.Plugin.PluginName == "" || record.Plugin.Status != contract.StatusActive || record.Plugin.CurrentRevisionNo != 1 ||
 		record.Plugin.LockVersion != 1 || record.Plugin.CreatedAt.IsZero() || record.Plugin.UpdatedAt.IsZero() ||
 		record.Revision.ScopeID != record.Plugin.ScopeID || record.Revision.PluginID != record.Plugin.PluginID ||
 		record.Revision.RevisionNo != 1 || record.Revision.PluginType != record.Plugin.PluginType ||
@@ -781,8 +785,10 @@ func validateCreateRecord(record pluginstore.CreateRecord) error {
 }
 
 func validateContentUpdateRecord(record pluginstore.ContentUpdateRecord) error {
-	if record.ScopeID == "" || record.PluginID == "" || record.PluginName == "" ||
-		record.ExpectedLockVersion == 0 || record.UpdatedAt.IsZero() {
+	if err := validateStoreIdentity(record.ScopeID, record.PluginID); err != nil {
+		return err
+	}
+	if record.PluginName == "" || record.ExpectedLockVersion == 0 || record.UpdatedAt.IsZero() {
 		return pluginstore.ErrInvalidArgument
 	}
 	if record.Revision.ScopeID != record.ScopeID || record.Revision.PluginID != record.PluginID ||
@@ -797,17 +803,37 @@ func validateContentUpdateRecord(record pluginstore.ContentUpdateRecord) error {
 }
 
 func validateRelationsUpdateRecord(record pluginstore.RelationsUpdateRecord) error {
-	if record.ScopeID == "" || record.PluginID == "" ||
-		record.ExpectedLockVersion == 0 || record.UpdatedAt.IsZero() {
+	if err := validateStoreIdentity(record.ScopeID, record.PluginID); err != nil {
+		return err
+	}
+	if record.ExpectedLockVersion == 0 || record.UpdatedAt.IsZero() {
 		return pluginstore.ErrInvalidArgument
 	}
 	return validateRelationRows(record.ScopeID, record.PluginID, record.Relations)
 }
 
+func validateStoreIdentity(scopeID, pluginID string) error {
+	if err := contract.ValidateIdentifier("scope_id", scopeID, 40); err != nil {
+		return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
+	}
+	if err := contract.ValidatePluginID(pluginID); err != nil {
+		return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
+	}
+	return nil
+}
+
 func validateRevisionRecord(revision pluginstore.Revision) error {
-	if revision.ScopeID == "" || revision.PluginID == "" || revision.CreatedBy == "" ||
-		revision.CreatedAt.IsZero() {
+	if revision.CreatedAt.IsZero() {
 		return pluginstore.ErrInvalidArgument
+	}
+	if err := contract.ValidateIdentifier("scope_id", revision.ScopeID, 40); err != nil {
+		return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
+	}
+	if err := contract.ValidatePluginID(revision.PluginID); err != nil {
+		return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
+	}
+	if err := contract.ValidateIdentifier("created_by", revision.CreatedBy, 191); err != nil {
+		return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
 	}
 	normalized, err := contract.NormalizeRevisionContent(contract.RevisionContent{
 		PluginType: revision.PluginType, ManifestJSON: revision.ManifestJSON,

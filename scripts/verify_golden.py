@@ -76,7 +76,12 @@ def canonical_number(raw: str) -> str:
     exponent = 0
     exponent_at = next((index for index, character in enumerate(value) if character in "eE"), -1)
     if exponent_at >= 0:
-        exponent = int(value[exponent_at + 1 :])
+        exponent_text = value[exponent_at + 1 :]
+        exponent_negative = exponent_text.startswith("-")
+        exponent_digits = exponent_text.lstrip("+-").lstrip("0") or "0"
+        if len(exponent_digits) > 5:
+            raise ContractError("JSON number exponent is outside the supported range")
+        exponent = int(("-" if exponent_negative else "") + exponent_digits)
         if exponent < -10_000 or exponent > 10_000:
             raise ContractError("JSON number exponent is outside the supported range")
         value = value[:exponent_at]
@@ -159,7 +164,9 @@ def canonical_package(value: object) -> str:
         value = dict(value)
         value["attachments"] = sorted(
             value["attachments"],
-            key=lambda item: item.get("path", "") if isinstance(item, dict) else "",
+            key=lambda item: (0, item["path"])
+            if isinstance(item, dict) and isinstance(item.get("path"), str)
+            else (1, ""),
         )
     return canonical_json(value)
 
@@ -179,14 +186,23 @@ def main() -> None:
     ):
         value = canonical_fixture[field]
         require(isinstance(value, Number) and int(value.raw) == expected, f"{field} drifted")
+    require(len(canonical_fixture["cases"]) > 0, "canonical fixture cases must not be empty")
+    require(len(canonical_fixture["invalid_inputs"]) > 0, "canonical invalid inputs must not be empty")
     for case in canonical_fixture["cases"]:
         require(canonical_json(parse_json(case["input"])) == case["canonical"], case["name"])
     for raw in canonical_fixture["invalid_inputs"]:
         try:
             canonical_json(parse_json(raw))
-        except (ContractError, ValueError):
+        except (ContractError, json.JSONDecodeError):
             continue
         raise AssertionError(f"invalid Canonical JSON input was accepted: {raw}")
+    require(canonical_json(parse_json("1e" + "0" * 5_000 + "1")) == "10", "long zero-padded exponent")
+    malformed_package = {"attachments": [{"path": "b"}, {"missing": True}, {"path": "a"}]}
+    require(
+        canonical_package(malformed_package)
+        == '{"attachments":[{"path":"a"},{"path":"b"},{"missing":true}]}',
+        "attachment sort fallback drifted",
+    )
     canonical_json(parse_json("[" * MAX_NESTING + "0" + "]" * MAX_NESTING))
     try:
         canonical_json(parse_json("[" * (MAX_NESTING + 1) + "0" + "]" * (MAX_NESTING + 1)))
@@ -197,6 +213,7 @@ def main() -> None:
 
     hash_fixture = load_fixture(root / "contracts/v2/fixtures/golden/plugin-hash.json")
     require(isinstance(hash_fixture, dict), "hash fixture must be an object")
+    require(len(hash_fixture["cases"]) > 0, "hash fixture cases must not be empty")
     for case in hash_fixture["cases"]:
         manifest = canonical_json(case["manifest_json"])
         package = canonical_package(case["plugin_json"])

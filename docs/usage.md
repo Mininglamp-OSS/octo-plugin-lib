@@ -22,7 +22,9 @@ plugins, err := pluginservice.New(store)
 ```
 
 `Install` 只适用于新空 schema 或已精确匹配的三表结构：三张自有表全无时才安装，三表齐全
-时只校验；只存在 1～2 张表时直接失败，不猜测性补表或补约束。`VerifySchema` 会拒绝列、
+时只校验；只存在 1～2 张表，或三表已建但最终外键尚未完成时，都会直接失败，不猜测性
+补表或补约束。若确认这是首次安装中断且三表尚无业务数据，删除这三张不完整表后重新执行
+`Install`；不能证明为空时使用新空库并从可信内容重建。`VerifySchema` 会拒绝列、
 约束、索引或表漂移。安装过程由数据库级 advisory lock 串行化，锁释放使用独立 5 秒清理
 超时并校验释放结果；释放失败时连接会被丢弃，不能带锁回到连接池。不兼容结构必须使用
 新空库，并从可信原始内容通过当前 Lib 重新校验导入；不得用原地列转换冒充安全迁移。
@@ -30,7 +32,8 @@ plugins, err := pluginservice.New(store)
 只需 Plugin 表的 SELECT/INSERT/UPDATE、Revision 表的 SELECT/INSERT，以及 Relation 表的
 SELECT/INSERT/DELETE；不应拥有 Revision UPDATE/DELETE、Plugin DELETE 或 DDL 权限。
 `scope_id` 和 `created_by` 只接受非空 ASCII 标识符（字母、数字、点、下划线、冒号、
-连字符），Plugin ID 只接受小写 UUID 文本形状；Service 与 MySQL CHECK 使用同一规则。
+连字符），Plugin ID 只接受小写 UUID 文本形状；Contract、Service、Store 与 MySQL CHECK
+使用同一规则。
 
 真实 MySQL 门禁使用 `make test-mysql`；它要求同时提供
 `OCTO_PLUGIN_LIB_MYSQL_DSN` 与 `OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN`，缺失时失败而不是跳过。

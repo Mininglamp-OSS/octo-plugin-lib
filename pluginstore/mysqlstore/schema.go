@@ -83,6 +83,7 @@ func ownedTablesInstalled(ctx context.Context, db interface {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*)
 FROM information_schema.tables
 WHERE table_schema = DATABASE()
+  AND table_type = 'BASE TABLE'
   AND table_name IN ('plugin', 'plugin_revision', 'plugin_relation')`).Scan(&count); err != nil {
 		return false, fmt.Errorf("mysqlstore: inspect existing Plugin tables: %w", err)
 	}

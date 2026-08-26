@@ -142,6 +142,21 @@ func ValidatePluginID(value string) error {
 	return nil
 }
 
+// ValidateIdentifier validates the ASCII identifier form shared by host
+// tenant scopes and actors persisted through the common Store.
+func ValidateIdentifier(field, value string, maximum int) error {
+	if maximum <= 0 || len(value) == 0 || len(value) > maximum {
+		return invalid(CodeInvalidField, field, fmt.Sprintf("must contain 1 to %d ASCII characters", maximum))
+	}
+	for _, character := range value {
+		if character > unicode.MaxASCII ||
+			(!unicode.IsLetter(character) && !unicode.IsDigit(character) && !strings.ContainsRune("._:-", character)) {
+			return invalid(CodeInvalidField, field, "must use ASCII letters, digits, dot, underscore, colon, or hyphen")
+		}
+	}
+	return nil
+}
+
 // ValidateStatus rejects states outside the shared ACTIVE/ARCHIVED lifecycle.
 func ValidateStatus(value Status) error {
 	if !IsValidStatus(value) {

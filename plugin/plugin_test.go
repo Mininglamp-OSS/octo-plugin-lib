@@ -300,6 +300,9 @@ func TestCanonicalJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
 	}
+	if len(fixture.Cases) == 0 || len(fixture.InvalidInputs) == 0 {
+		t.Fatal("Canonical JSON fixture cases must not be empty")
+	}
 	for _, test := range fixture.Cases {
 		t.Run(test.Name, func(t *testing.T) {
 			got, err := plugin.CanonicalJSON([]byte(test.Input))
@@ -398,6 +401,9 @@ func TestGoldenHash(t *testing.T) {
 	}
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
+	}
+	if len(fixture.Cases) == 0 {
+		t.Fatal("Plugin hash fixture cases must not be empty")
 	}
 	for _, test := range fixture.Cases {
 		t.Run(test.Name, func(t *testing.T) {

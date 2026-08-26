@@ -107,7 +107,7 @@ U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化�
 
 | 事实 | JSON / Service | Go | MySQL | 权威与校验 |
 | --- | --- | --- | --- | --- |
-| 宿主隔离键 | `Scope.ID` | `string`，1～40 位 ASCII 标识符 | `plugin.scope_id VARCHAR(40) ASCII BIN` | 宿主映射；主键、外键和 CHECK 阻止空值、非法字符及跨 scope 关系 |
+| 宿主隔离键 | `Scope.ID` | `string`，1～40 位 ASCII 标识符 | `plugin.scope_id VARCHAR(40) ASCII BIN` | 宿主映射；Contract、Service、Store、主键、外键和 CHECK 共同阻止空值、非法字符及跨 scope 关系 |
 | Plugin 身份 | `plugin_id` / `CreateInput.PluginID` | 小写 UUID 文本 | `plugin.id CHAR(36) ASCII BIN` | 宿主生成；Go 与 CHECK 使用同一形状规则，不校验 UUID version/variant |
 | 当前名称/类型 | `plugin_name/plugin_type` 与 Manifest | `string` / `plugin.Type` | `plugin.name/type` | Manifest 是内容真源；Service 同事务维护查询投影，读取交叉校验 |
 | 当前状态 | `ACTIVE/ARCHIVED` | `plugin.Status` | `plugin.status VARCHAR(16) ASCII BIN` | Service 转换；CHECK 拒绝其它状态 |
@@ -116,7 +116,7 @@ U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化�
 | 并发版本 | `expected_lock_version` 由宿主 API 映射 | `uint32` | `lock_version INT UNSIGNED` | 内容、状态和关系共用 CAS，不等同于 Revision No |
 | 内容文档/摘要 | `manifest_json/plugin_json/plugin_hash` | `json.RawMessage/string` | `LONGTEXT utf8mb4_bin` / `CHAR(71) ASCII BIN` | Lib Canonical JSON 与 SHA-256 是唯一写入真源，读取复核 |
 | 当前关系 | Relation Schema / `RelationInput` | `pluginstore.Relation` | `plugin_relation` | source Plugin 当前态拥有；复合外键禁止跨 scope，不进入 Revision/Hash |
-| Revision 作者 | `Actor.ID` | `string`，1～191 位 ASCII 标识符 | `created_by VARCHAR(191) ASCII BIN` | 仅内容 Revision 记录；Go 与 CHECK 使用同一字符规则，宿主负责身份与审计 |
+| Revision 作者 | `Actor.ID` | `string`，1～191 位 ASCII 标识符 | `created_by VARCHAR(191) ASCII BIN` | 仅内容 Revision 记录；Contract、Service、Store 与 CHECK 使用同一规则，宿主负责身份与审计 |
 
 创建在一个事务中插入 Plugin 占位行、Revision 1、回填当前指针和当前关系。内容更新锁定
 Plugin 行，按 `current_revision_no + 1` 分配序号并切换指针。图创建先完整校验闭包，
@@ -203,7 +203,8 @@ Service 返回契约校验错误时同时匹配 `pluginstore.ErrInvalidArgument`
 事务，返回的错误同样匹配该 sentinel。
 
 本库不执行推断式迁移或结构修补。宿主只可在新空 database/schema 安装，或连接精确匹配的
-三表结构；部分存在或结构指纹不一致时拒绝启动。需要替换不兼容结构时，使用新空库并从可信
+三表结构；只存在部分表、或三表已建但最终外键未完成时都拒绝启动。若能证明这是首次安装
+中断且三表尚无业务数据，可删除三张不完整表后重新执行 `Install`；否则使用新空库并从可信
 原始内容通过当前 Lib 重新校验导入，不做可能损坏 Canonical 字节的原地列转换。
 
 ## 8. 明确开放项
