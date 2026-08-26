@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cowork-plugin-manifest-2.0.json",
+  "title": "Cowork Plugin Manifest 2.0",
+  "type": "object",
+  "required": ["$schema", "plugin_name", "plugin_type", "name", "description"],
+  "properties": {
+    "$schema": { "const": "cowork-plugin-manifest-2.0.json" },
+    "plugin_name": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]" },
+    "plugin_type": { "enum": ["expert", "skill", "expert_team", "connector"] },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]" },
+    "description": { "type": "string" },
+    "labels": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "input"],
+        "properties": {
+          "title": { "type": "string" },
+          "input": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

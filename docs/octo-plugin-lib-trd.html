@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Octo Plugin Lib · 技术设计</title>
+<style>
+:root{color-scheme:light dark;--bg:#f8fafc;--panel:#fff;--text:#0f172a;--muted:#475569;--line:#cbd5e1;--accent:#047857;--code:#f1f5f9}
+@media(prefers-color-scheme:dark){:root{--bg:#020617;--panel:#0f172a;--text:#f8fafc;--muted:#cbd5e1;--line:#334155;--accent:#4ade80;--code:#1e293b}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.skip{position:absolute;left:-9999px}.skip:focus{left:1rem;top:1rem;background:var(--panel);padding:.6rem 1rem;border:2px solid var(--accent);z-index:10}
+.layout{display:grid;grid-template-columns:230px minmax(0,920px);gap:2rem;max-width:1230px;margin:auto;padding:2rem}
+nav{position:sticky;top:1rem;align-self:start;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:1rem}
+nav a{display:block;color:var(--muted);padding:.35rem .5rem;border-radius:6px;text-decoration:none}nav a:hover,nav a:focus-visible{color:var(--text);background:var(--code);outline:2px solid transparent}
+main{min-width:0}.hero{padding:2.5rem;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin-bottom:1.5rem}
+.eyebrow{color:var(--accent);font-weight:700;letter-spacing:.08em;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.6rem);line-height:1.05;margin:.4rem 0 1rem}h2{margin-top:2.5rem;border-bottom:1px solid var(--line);padding-bottom:.4rem}h3{margin-top:1.7rem}
+.card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:1.1rem;margin:1rem 0}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.08rem .3rem;border-radius:4px}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;margin:1rem 0}table{border-collapse:collapse;width:100%;min-width:650px;background:var(--panel)}th,td{text-align:left;vertical-align:top;padding:.65rem .75rem;border-bottom:1px solid var(--line)}th{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.badge{display:inline-block;padding:.15rem .5rem;border:1px solid var(--line);border-radius:999px;font-size:.85rem}.ok{color:var(--accent)}
+pre{overflow:auto;background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:10px}a{color:var(--accent)}
+@media(max-width:820px){.layout{display:block;padding:1rem}nav{position:static;margin-bottom:1rem}.grid{grid-template-columns:1fr}.hero{padding:1.5rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">跳到正文</a>
+<div class="layout">
+<nav aria-label="文档目录">
+<strong>Plugin Lib TRD</strong>
+<a href="#scope">边界</a><a href="#contract">公共契约</a><a href="#files">文件与 Hash</a>
+<a href="#er">ER / 事务</a><a href="#api">Go API</a><a href="#market">宿主接入</a>
+<a href="#verify">验收</a>
+</nav>
+<main id="content">
+<header class="hero">
+<div class="eyebrow">Current contract · v2</div>
+<h1>Octo Plugin Lib</h1>
+<p>业务中立的 Go 领域库：统一 Plugin Schema、校验、内容 Hash 和宿主私有 MySQL 三表 CRUD。</p>
+<span class="badge ok">不独立部署</span> <span class="badge">三表</span> <span class="badge">CAS</span>
+</header>
+
+<section id="scope"><h2>1. 系统边界</h2>
+<div class="grid">
+<div class="card"><h3>Lib 拥有</h3><p>四类 Plugin、两态状态、三类 Relation、内容 Revision、Schema、Hash、MySQL Store 与 conformance。</p></div>
+<div class="card"><h3>宿主拥有</h3><p>HTTP、身份、鉴权、审计、幂等、Workspace/Space、对象存储、Secret、Runtime 与产品生命周期。</p></div>
+<div class="card"><h3>明确不包含</h3><p>跨宿主传输封装、市场版本与来源、发布回 Market、<code>cowork_plugin_audit_log</code> 和网络服务。</p></div>
+</div>
+<p>Market、Loop、Buddy 及其他宿主引用同一个库，但使用各自的 database/schema、账号与 Bucket。</p>
+</section>
+
+<section id="contract"><h2>2. 公共机器契约</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Schema</th><th>ID</th></tr></thead><tbody>
+<tr><td>Plugin</td><td><code>cowork-plugin-2.0.json</code></td></tr>
+<tr><td>Manifest</td><td><code>cowork-plugin-manifest-2.0.json</code></td></tr>
+<tr><td>Package</td><td><code>cowork-plugin-package-2.0.json</code></td></tr>
+<tr><td>Relation</td><td><code>cowork-plugin-relation-2.0.json</code></td></tr>
+<tr><td>Revision Content</td><td><code>cowork-plugin-revision-content-2.0.json</code></td></tr>
+</tbody></table></div>
+
+<h3>Plugin</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead>
+<tbody data-contract="plugin">
+<tr data-field="plugin_id"><td><code>plugin_id</code></td><td>宿主生成的小写 UUID</td></tr>
+<tr data-field="plugin_name"><td><code>plugin_name</code></td><td>当前名称投影</td></tr>
+<tr data-field="plugin_type"><td><code>plugin_type</code></td><td>expert / skill / expert_team / connector</td></tr>
+<tr data-field="manifest_json"><td><code>manifest_json</code></td><td>Manifest</td></tr>
+<tr data-field="plugin_json"><td><code>plugin_json</code></td><td>Package 或 null</td></tr>
+<tr data-field="plugin_hash"><td><code>plugin_hash</code></td><td>规范化内容摘要</td></tr>
+<tr data-field="status"><td><code>status</code></td><td>ACTIVE / ARCHIVED</td></tr>
+<tr data-field="created_at"><td><code>created_at</code></td><td>UTC 创建时间</td></tr>
+<tr data-field="updated_at"><td><code>updated_at</code></td><td>UTC 当前态更新时间</td></tr>
+</tbody></table></div>
+
+<h3>Relation</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead>
+<tbody data-contract="relation">
+<tr data-field="source_plugin_id"><td><code>source_plugin_id</code></td><td>关系拥有者</td></tr>
+<tr data-field="target_plugin_id"><td><code>target_plugin_id</code></td><td>目标 Plugin</td></tr>
+<tr data-field="relation_type"><td><code>relation_type</code></td><td>expert_team_expert / expert_skill / expert_connector</td></tr>
+</tbody></table></div>
+
+<h3>Revision Content</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead>
+<tbody data-contract="revision-content">
+<tr data-field="plugin_type"><td><code>plugin_type</code></td><td>内容类型</td></tr>
+<tr data-field="manifest_json"><td><code>manifest_json</code></td><td>规范化 Manifest</td></tr>
+<tr data-field="plugin_json"><td><code>plugin_json</code></td><td>规范化 Package</td></tr>
+<tr data-field="plugin_hash"><td><code>plugin_hash</code></td><td>内容摘要</td></tr>
+</tbody></table></div>
+<p>Relation 是当前绑定，不属于 Revision；因此没有 <code>revision_hash</code> 或 Revision Relation。</p>
+<p>JSON Schema 负责结构；<code>fixtures/semantic/invalid.json</code> 固化 Schema 无法表达的
+Plugin/Manifest 一致性、Hash、时间顺序、Relation 端点和类型专属 Package 规则。Go 调用方
+使用严格 Decode API 一次完成未知字段拒绝和语义校验。</p>
+</section>
+
+<section id="files"><h2>3. 文件与内容身份</h2>
+<ul>
+<li><code>raw</code> 只允许 UTF-8 <code>raw_content</code>。</li>
+<li><code>storage</code> 必须提供 <code>content_size/content_hash</code>，不允许 <code>raw_content/storage_uri</code>。</li>
+<li>path 最多 512 字符，拒绝绝对路径、Windows 盘符路径、反斜杠、dot/parent/空段、控制字符、重复 path 和尾斜杠。</li>
+<li>MIME 最多 255 字符；非空值按 Unicode White_Space 判断；<code>content_size</code> 最大 <code>9007199254740991</code>。</li>
+<li>文档总大小、附件总大小和附件数量由宿主在 HTTP、上传和存储入口限制；Lib 不充当请求体限流器。</li>
+</ul>
+<p>Lib 不读取 storage 对象字节。宿主按 <code>scope_id + content_hash</code> 稳定定位私有对象。</p>
+<p>四类 Plugin 都允许显式 <code>plugin_json: null</code>。非空 Package 中，Expert 需要
+<code>AGENTS.md</code> 且无 Connector 描述；Skill 需要 <code>SKILL.md</code> 且无 Connector
+描述；Expert Team 只能包含 <code>AGENTS.md</code>；Connector 按下表约束。</p>
+<p><code>plugin_hash = sha256(canonical(manifest_json) + canonical(plugin_json))</code>。Attachment
+按 path 排序，其数组顺序不影响 Hash；其他数组保序。Canonical JSON 不等同于 RFC 8785/JCS。
+数字文本最长 128，指数范围为 -10000～10000；对象键按 Unicode scalar value 升序排列，
+对合法 UTF-8 等价于 UTF-8 字节序，不得使用 UTF-16 code-unit 默认顺序。字符串使用 Go
+<code>encoding/json</code> 规则，<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code>、U+2028、U+2029
+使用 <code>\u</code> 转义。对象排序 O(k log k)，内存与规范化输出之和同阶，指数展开最多增加约 10,000 个展开字符；
+JSON 最多嵌套 512 个 object/array 容器。UUID 不校验 UUID version 或 variant；孤立 UTF-16 surrogate 转义被拒绝。跨语言实现必须同时执行 JSON Schema、semantic
+fixtures 和 golden Hash。</p>
+</section>
+
+<section id="er"><h2>4. ER 与事务</h2>
+<pre aria-label="ER 关系图">plugin (scope_id, id)
+  ├── 1:N plugin_revision (scope_id, plugin_id, revision_no)
+  ├── current → plugin_revision via (scope_id, id, current_revision_no)
+  └── N:N plugin_relation (scope_id, source_plugin_id, relation_type, target_plugin_id)</pre>
+<ul>
+<li><code>scope_id VARCHAR(40)</code>；<code>revision_no</code> 与 <code>lock_version</code> 为 INT UNSIGNED / Go uint32。</li>
+<li>Revision No 在锁定 Plugin 行的事务内从 1 递增，不使用全表 AUTO_INCREMENT。</li>
+<li>Create 固定 ACTIVE；Update、SetStatus、ReplaceRelations 共享 lock_version CAS。</li>
+<li>ARCHIVED Plugin 的普通 Update（包括 no-op）均拒绝；Restore 可追加内容 Revision，但保持 ARCHIVED 且不改变当前关系。</li>
+<li>CreateGraph 校验闭包后一次提交；失败全部回滚。</li>
+<li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>；Install 实际往返 UTC 微秒时间并拒绝错误配置。</li>
+<li>Revision 不可变由公开 API/Store 保证，不使用数据库 trigger；宿主数据库账号不得用原始 SQL 绕过。</li>
+<li>结构指纹已在 MySQL 8.0.46 与 8.4.9 验证。</li>
+<li>List 使用页码/offset 并返回当前页，不提供跨请求快照；并发更新可能使项目换页，调用方应刷新。</li>
+</ul>
+</section>
+
+<section id="api"><h2>5. Go API</h2>
+<div class="table-wrap"><table><thead><tr><th>API</th><th>职责</th></tr></thead>
+<tbody data-contract="go-api">
+<tr><td><code>contracts.Schema</code></td><td>读取 Schema</td></tr>
+<tr><td><code>contracts.Fixture</code></td><td>读取基础 fixture</td></tr>
+<tr><td><code>contracts.RevisionFixture</code></td><td>读取 Revision fixture</td></tr>
+<tr><td><code>plugin.DecodePlugin</code></td><td>严格解析并校验 Plugin</td></tr>
+<tr><td><code>plugin.DecodeRelation</code></td><td>严格解析并校验 Relation</td></tr>
+<tr><td><code>plugin.DecodeRevisionContent</code></td><td>严格解析并校验 Revision Content</td></tr>
+<tr><td><code>plugin.DecodeManifest</code></td><td>解析 Manifest</td></tr>
+<tr><td><code>plugin.DecodePackage</code></td><td>解析 Package</td></tr>
+<tr><td><code>plugin.ValidatePluginID</code></td><td>校验 ID</td></tr>
+<tr><td><code>plugin.ValidateStatus</code></td><td>校验状态</td></tr>
+<tr><td><code>plugin.ValidatePlugin</code></td><td>校验 Plugin</td></tr>
+<tr><td><code>plugin.NormalizePlugin</code></td><td>规范化 Plugin</td></tr>
+<tr><td><code>plugin.ValidateRelation</code></td><td>校验 Relation</td></tr>
+<tr><td><code>plugin.ValidateRelationEndpoints</code></td><td>校验两端类型</td></tr>
+<tr><td><code>plugin.CanonicalJSON</code></td><td>稳定 JSON</td></tr>
+<tr><td><code>plugin.ComputePluginHash</code></td><td>内容摘要</td></tr>
+<tr><td><code>plugin.ValidateRevisionContent</code></td><td>校验 Revision 内容</td></tr>
+<tr><td><code>plugin.NormalizeRevisionContent</code></td><td>规范化 Revision 内容</td></tr>
+<tr><td><code>plugin.Type.Valid()</code></td><td>校验类型枚举</td></tr>
+<tr><td><code>plugin.IsValidStatus</code></td><td>校验状态枚举</td></tr>
+<tr><td><code>plugin.IsActiveStatus</code></td><td>判断 ACTIVE</td></tr>
+<tr><td><code>plugin.RelationType.Valid()</code></td><td>校验关系枚举</td></tr>
+<tr><td><code>pluginstore.Code</code></td><td>错误分类</td></tr>
+<tr><td><code>mysqlstore.SchemaSQL</code></td><td>读取 DDL</td></tr>
+<tr><td><code>mysqlstore.Install</code></td><td>安装三表</td></tr>
+<tr><td><code>mysqlstore.VerifySchema</code></td><td>核验结构指纹</td></tr>
+<tr><td><code>mysqlstore.New</code></td><td>创建 Store</td></tr>
+<tr><td><code>Store.WithTx</code></td><td>用每次写调用一个 SAVEPOINT 绑定宿主事务</td></tr>
+<tr><td><code>pluginservice.New</code></td><td>创建 Service</td></tr>
+<tr><td><code>Service.WithTx</code></td><td>绑定宿主事务</td></tr>
+<tr><td><code>Service.Create</code></td><td>创建 Plugin</td></tr>
+<tr><td><code>Service.Get</code></td><td>读取当前快照</td></tr>
+<tr><td><code>Service.List</code></td><td>分页检索</td></tr>
+<tr><td><code>Service.Update</code></td><td>更新内容</td></tr>
+<tr><td><code>Service.SetStatus</code></td><td>修改状态</td></tr>
+<tr><td><code>Service.ReplaceRelations</code></td><td>替换当前关系</td></tr>
+<tr><td><code>Service.GetRevision</code></td><td>读取历史内容</td></tr>
+<tr><td><code>Service.ListRevisions</code></td><td>列出历史</td></tr>
+<tr><td><code>Service.Restore</code></td><td>恢复为新 Revision</td></tr>
+<tr><td><code>Service.CreateGraph</code></td><td>原子创建闭合图</td></tr>
+<tr><td><code>pluginconformance.Run</code></td><td>仅供宿主 <code>_test.go</code> 使用的一致性验证</td></tr>
+</tbody></table></div>
+<p>绑定事务仍由宿主最终提交或回滚。Lib 写调用失败会回滚到本次 SAVEPOINT；若 SAVEPOINT
+恢复失败或 MySQL 已终止整个事务，错误匹配 <code>pluginstore.ErrTransactionAborted</code>，
+且 <code>pluginstore.Code</code> 返回 <code>INTERNAL</code>；宿主必须重新开始事务，不能继续提交或重试旧事务。</p>
+</section>
+
+<section id="market"><h2>6. 宿主与 Market</h2>
+<p>Market 保存 Space 公开 Plugin；Loop/Buddy 保存各自私有副本。Market 招募时传输当前
+闭合关系图与附件原始字节，目标宿主生成新 ID 并深拷贝。Lib 不定义跨服务 HTTP，也不允许
+目标宿主直连 Market 数据库或 Bucket。</p>
+<table><tbody>
+<tr><td><code>mcp</code></td><td>必须有根目录 <code>mcp.json</code>；嵌套 Skill 可选</td></tr>
+<tr><td><code>cli</code></td><td>必须有根目录 <code>cli.json</code> 和至少一个 <code>skills/&lt;name&gt;/SKILL.md</code></td></tr>
+<tr><td><code>skill-only</code></td><td>必须包含根目录 <code>token-schema.json</code>，并至少包含一个 <code>skills/&lt;name&gt;/SKILL.md</code>；附件顺序不表达业务语义</td></tr>
+<tr><td><code>openconnector</code></td><td>必须有根目录 <code>mcp.json</code></td></tr>
+</tbody></table>
+</section>
+
+<section id="verify"><h2>7. 验收门禁</h2>
+<p>Schema/fixtures/golden、unit/race/vet/build、fresh MySQL 安装与重复安装、CRUD、CAS、
+scope 隔离、事务回滚、图原子性、结构漂移和独立 GOWORK=off 消费者必须全部通过。</p>
+<p>稳定错误码：<code>invalid_json</code>、<code>invalid_field</code>、
+<code>invalid_plugin_type</code>、<code>invalid_relation_type</code>、
+<code>invalid_relation</code>、<code>invalid_attachment_path</code>、
+<code>duplicate_attachment_path</code>、<code>invalid_attachment_content</code>、
+<code>hash_mismatch</code>。</p>
+<p>Service 返回契约校验错误时同时保留 <code>pluginstore.ErrInvalidArgument</code> 与原始
+<code>plugin.ValidationError</code>，宿主通过 <code>errors.As</code> 读取稳定的
+<code>Code/Path</code>，不得解析错误文本。</p>
+<p>发布首个稳定版本后，同一 Schema ID 的内容不可变。</p>
+</section>
+</main>
+</div>
+</body>
+</html>

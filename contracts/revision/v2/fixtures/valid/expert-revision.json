@@ -1,0 +1,12 @@
+{
+  "plugin_type": "expert",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Research Expert",
+    "plugin_type": "expert",
+    "name": "Research Expert",
+    "description": "Researches sources"
+  },
+  "plugin_json": null,
+  "plugin_hash": "sha256:741d263c8147d63ba9c380702e4bf412ddb45b1ececbdf754765f25579abf22b"
+}

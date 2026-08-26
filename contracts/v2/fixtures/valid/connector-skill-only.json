@@ -1,0 +1,24 @@
+{
+  "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f7777",
+  "plugin_name": "Webhook Skill 连接器",
+  "plugin_type": "connector",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Webhook Skill 连接器",
+    "plugin_type": "connector",
+    "name": "Webhook Skill 连接器",
+    "description": "通过 Skill 脚本调用 Webhook。"
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "connector": { "type": "skill-only", "source": "connector.webhook-skill" },
+    "attachments": [
+      { "path": "token-schema.json", "content_type": "raw", "mime_type": "application/json", "raw_content": "{}" },
+      { "path": "skills/webhook/SKILL.md", "content_type": "raw", "mime_type": "text/markdown", "raw_content": "# Webhook\n" }
+    ]
+  },
+  "plugin_hash": "sha256:13007d7661fd530589df5d99b87f838d6d3d969fe8045df4df9c62a36fd2cc5f",
+  "status": "ACTIVE",
+  "created_at": "2026-08-21T08:00:00Z",
+  "updated_at": "2026-08-21T08:00:00Z"
+}

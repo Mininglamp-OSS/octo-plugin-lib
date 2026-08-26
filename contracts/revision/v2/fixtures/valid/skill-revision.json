@@ -1,0 +1,22 @@
+{
+  "plugin_type": "skill",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Summarize",
+    "plugin_type": "skill",
+    "name": "Summarize",
+    "description": "Summarizes text"
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "attachments": [
+      {
+        "path": "SKILL.md",
+        "content_type": "raw",
+        "mime_type": "text/markdown",
+        "raw_content": "# Summarize"
+      }
+    ]
+  },
+  "plugin_hash": "sha256:239c15de1c07d5e557dd16126e079dd7ba9131fa5dc0b183d49e2378f6c6a589"
+}

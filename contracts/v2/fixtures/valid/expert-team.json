@@ -1,0 +1,27 @@
+{
+  "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f4444",
+  "plugin_name": "产品研发专家团",
+  "plugin_type": "expert_team",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "产品研发专家团",
+    "plugin_type": "expert_team",
+    "name": "产品研发专家团",
+    "description": "产品、设计和技术专家协同完成方案。"
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "attachments": [
+      {
+        "path": "AGENTS.md",
+        "content_type": "raw",
+        "mime_type": "text/markdown",
+        "raw_content": "# 产品研发专家团\n"
+      }
+    ]
+  },
+  "plugin_hash": "sha256:8ebef41a8772b710a0b1bc9e55b26f9f9700faed4984386e287bfaa321418092",
+  "status": "ARCHIVED",
+  "created_at": "2026-08-21T08:00:00Z",
+  "updated_at": "2026-08-21T08:00:00Z"
+}

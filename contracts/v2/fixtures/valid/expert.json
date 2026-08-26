@@ -1,0 +1,28 @@
+{
+  "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f1111",
+  "plugin_name": "PRD 大纲专家",
+  "plugin_type": "expert",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "PRD 大纲专家",
+    "plugin_type": "expert",
+    "name": "PRD 大纲专家",
+    "description": "把零散需求整理为结构化 PRD。",
+    "labels": ["prd", "需求分析"]
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "attachments": [
+      {
+        "path": "AGENTS.md",
+        "content_type": "raw",
+        "mime_type": "text/markdown",
+        "raw_content": "# PRD 大纲专家\n"
+      }
+    ]
+  },
+  "plugin_hash": "sha256:118dcbaf9f2e873ebdf1d63ea3f9048640d18e43713a6fade173a54f6d69a72d",
+  "status": "ACTIVE",
+  "created_at": "2026-08-21T08:00:00Z",
+  "updated_at": "2026-08-21T08:00:00Z"
+}

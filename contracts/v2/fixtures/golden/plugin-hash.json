@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "name": "raw-content",
+      "manifest_json": {
+        "plugin_type": "skill",
+        "description": "Golden hash",
+        "$schema": "cowork-plugin-manifest-2.0.json",
+        "name": "Golden Skill",
+        "plugin_name": "Golden Skill",
+        "extension": { "decimal": 1.2300, "enabled": true }
+      },
+      "plugin_json": {
+        "attachments": [
+          {
+            "raw_content": "# Golden\n",
+            "mime_type": "text/markdown",
+            "content_type": "raw",
+            "path": "SKILL.md"
+          }
+        ],
+        "$schema": "cowork-plugin-package-2.0.json"
+      },
+      "plugin_hash": "sha256:235b638b659081f3a1608dc53f44cdaf4bd9a247fd58079526f3b5947504479b"
+    },
+    {
+      "name": "attachment-order-and-storage-identity",
+      "manifest_json": {
+        "$schema": "cowork-plugin-manifest-2.0.json",
+        "plugin_name": "Golden Storage Skill",
+        "plugin_type": "skill",
+        "name": "Golden Storage Skill",
+        "description": "Storage identity and path order"
+      },
+      "plugin_json": {
+        "$schema": "cowork-plugin-package-2.0.json",
+        "attachments": [
+          {
+            "path": "SKILL.md",
+            "content_type": "storage",
+            "mime_type": "text/markdown",
+            "content_size": 7,
+            "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "path": "README.md",
+            "content_type": "raw",
+            "mime_type": "text/markdown",
+            "raw_content": "readme"
+          }
+        ]
+      },
+      "plugin_hash": "sha256:95c1fbdf596ce02a53ac596d4a95daa4a550c10a40644e6656ec893d3a8886fa"
+    }
+  ]
+}
