@@ -747,7 +747,7 @@ func validateRelations(sourceType contract.Type, sourceStatus contract.Status, c
 			SourcePluginID: relation.SourcePluginID, TargetPluginID: relation.TargetPluginID,
 			RelationType: relation.RelationType,
 		}, sourceType, target.pluginType); err != nil {
-			return fmt.Errorf("%w: %v", pluginstore.ErrInvalidArgument, err)
+			return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
 		}
 		if _, retained := existing[relationKey(relation)]; !retained &&
 			(!contract.IsActiveStatus(sourceStatus) || !contract.IsActiveStatus(target.status)) {

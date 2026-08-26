@@ -35,3 +35,21 @@ func TestNewRelationRequiresActiveSourceAndTarget(t *testing.T) {
 		t.Fatalf("retained historical relation rejected: %v", err)
 	}
 }
+
+func TestRelationTypeValidationPreservesContractDetails(t *testing.T) {
+	relation := pluginstore.Relation{
+		SourcePluginID: "10000000-0000-4000-8000-000000000001",
+		RelationType:   contract.RelationExpertSkill,
+		TargetPluginID: "20000000-0000-4000-8000-000000000002",
+	}
+	err := validateRelations(contract.TypeExpert, contract.StatusActive, nil, []pluginstore.Relation{relation}, map[string]lockedPlugin{
+		relation.TargetPluginID: {pluginType: contract.TypeExpert, status: contract.StatusActive},
+	})
+	var violation *contract.ValidationError
+	if !errors.Is(err, pluginstore.ErrInvalidArgument) || !errors.As(err, &violation) {
+		t.Fatalf("error = %v, want invalid argument with contract details", err)
+	}
+	if violation.Code != contract.CodeInvalidRelation || violation.Path != "relation_type" {
+		t.Fatalf("validation error = %#v", violation)
+	}
+}
