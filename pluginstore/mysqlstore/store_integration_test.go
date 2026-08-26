@@ -1,6 +1,7 @@
 package mysqlstore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +38,141 @@ func TestMySQLStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	pluginconformance.Run(t, service)
+}
+
+func TestCanonicalJSONTextRoundTrip(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("json-roundtrip-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const pluginID = "94000000-0000-4000-8000-000000000001"
+	input := rawSkill("JSON Roundtrip", "canonical")
+	input.ManifestJSON = []byte(`{"$schema":"cowork-plugin-manifest-2.0.json","plugin_name":"JSON Roundtrip","plugin_type":"skill","name":"JSON Roundtrip","description":"canonical","exact_number":1e10000}`)
+	want, err := contract.NormalizeRevisionContent(contract.RevisionContent{
+		PluginType: input.PluginType, ManifestJSON: input.ManifestJSON, PluginJSON: input.PluginJSON,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := service.Create(context.Background(), scope, actor, pluginservice.CreateInput{
+		PluginID: pluginID, Content: input,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := service.Get(context.Background(), scope, pluginID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	historical, err := service.GetRevision(context.Background(), scope, pluginID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.List(context.Background(), scope, pluginservice.ListFilter{Query: "canonical"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, revision := range map[string]pluginstore.Revision{
+		"Create": created.Revision, "Get": current.Revision, "GetRevision": historical,
+	} {
+		if !bytes.Equal(revision.ManifestJSON, want.ManifestJSON) ||
+			!bytes.Equal(revision.PluginJSON, want.PluginJSON) || revision.PluginHash != want.PluginHash {
+			t.Errorf("%s returned non-canonical content: %#v", name, revision)
+		}
+	}
+	if len(page.Items) != 1 || !bytes.Equal(page.Items[0].ManifestJSON, want.ManifestJSON) {
+		t.Fatalf("List returned non-canonical Manifest: %#v", page)
+	}
+	var stored []byte
+	if err := db.QueryRow(`SELECT manifest_json FROM plugin_revision
+WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, scope.ID, pluginID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(stored, want.ManifestJSON) {
+		t.Fatalf("database changed Canonical JSON: got %s, want %s", stored, want.ManifestJSON)
+	}
+}
+
+func TestDescriptionProjectionDriftFailsClosed(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("description-drift-%d", time.Now().UnixNano())}
+	const pluginID = "96000000-0000-4000-8000-000000000001"
+	if _, err := service.Create(context.Background(), scope, pluginservice.Actor{ID: "actor-test"}, pluginservice.CreateInput{
+		PluginID: pluginID, Content: rawSkill("Description Drift", "authoritative"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE plugin SET description = 'corrupt'
+WHERE scope_id = ? AND id = ?`, scope.ID, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Get(context.Background(), scope, pluginID); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("Get projection drift error = %v", err)
+	}
+	if _, err := service.List(context.Background(), scope, pluginservice.ListFilter{}); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("List projection drift error = %v", err)
+	}
+}
+
+func TestStoredJSONDriftFailsClosed(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	scope := pluginservice.Scope{ID: fmt.Sprintf("json-drift-%d", time.Now().UnixNano())}
+	const pluginID = "95000000-0000-4000-8000-000000000001"
+	created, err := service.Create(context.Background(), scope, pluginservice.Actor{ID: "actor-test"}, pluginservice.CreateInput{
+		PluginID: pluginID, Content: rawSkill("JSON Drift", "original"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE plugin_revision SET manifest_json = CONCAT(' ', manifest_json)
+WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, scope.ID, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Get(context.Background(), scope, pluginID); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("Get non-canonical JSON error = %v", err)
+	}
+	if _, err := service.GetRevision(context.Background(), scope, pluginID, 1); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("GetRevision non-canonical JSON error = %v", err)
+	}
+	if _, err := service.List(context.Background(), scope, pluginservice.ListFilter{}); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("List non-canonical JSON error = %v", err)
+	}
+	if _, err := db.Exec(`UPDATE plugin_revision SET manifest_json = ?
+WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, created.Revision.ManifestJSON, scope.ID, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE plugin_revision
+SET manifest_json = JSON_SET(manifest_json, '$.description', 'changed outside the Store')
+WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, scope.ID, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Get(context.Background(), scope, pluginID); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("Get drift error = %v", err)
+	}
+	if _, err := service.GetRevision(context.Background(), scope, pluginID, 1); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("GetRevision drift error = %v", err)
+	}
+	if _, err := db.Exec(`UPDATE plugin_revision SET manifest_json = '{broken'
+WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, scope.ID, pluginID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Get(context.Background(), scope, pluginID); !errors.Is(err, pluginstore.ErrIntegrity) {
+		t.Fatalf("Get invalid JSON error = %v", err)
+	}
 }
 
 func TestHostTransactionRollback(t *testing.T) {
@@ -154,8 +291,8 @@ func TestListExcludesIncompletePluginRows(t *testing.T) {
 	const pluginID = "a2000000-0000-4000-8000-000000000001"
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	if _, err := db.Exec(`INSERT INTO plugin
-(scope_id, id, name, type, status, current_revision_no, lock_version, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`, scope.ID, pluginID, "Incomplete Skill",
+(scope_id, id, name, description, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, ?, '', ?, ?, NULL, 1, ?, ?)`, scope.ID, pluginID, "Incomplete Skill",
 		contract.TypeSkill, contract.StatusActive, now, now); err != nil {
 		t.Fatal(err)
 	}
@@ -341,14 +478,14 @@ func TestContentStatusAndRelationsShareOneCompareAndSwap(t *testing.T) {
 	}()
 	go func() {
 		<-start
-		_, err := service.SetStatus(context.Background(), scope, actor, sourceID, pluginservice.SetStatusInput{
+		_, err := service.SetStatus(context.Background(), scope, sourceID, pluginservice.SetStatusInput{
 			ExpectedLockVersion: 1, Status: contract.StatusArchived,
 		})
 		results <- err
 	}()
 	go func() {
 		<-start
-		_, err := service.ReplaceRelations(context.Background(), scope, actor, sourceID, pluginservice.ReplaceRelationsInput{
+		_, err := service.ReplaceRelations(context.Background(), scope, sourceID, pluginservice.ReplaceRelationsInput{
 			ExpectedLockVersion: 1,
 			Relations: []pluginservice.RelationInput{{
 				RelationType: contract.RelationExpertSkill, TargetPluginID: targetID,
@@ -373,6 +510,208 @@ func TestContentStatusAndRelationsShareOneCompareAndSwap(t *testing.T) {
 	}
 }
 
+func TestGetReturnsOneCurrentSnapshot(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	scope := pluginservice.Scope{ID: fmt.Sprintf("snapshot-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const (
+		sourceID = "91000000-0000-4000-8000-000000000001"
+		targetA  = "91000000-0000-4000-8000-000000000002"
+		targetB  = "91000000-0000-4000-8000-000000000003"
+	)
+	for _, target := range []struct {
+		id   string
+		name string
+	}{{targetA, "Target A"}, {targetB, "Target B"}} {
+		if _, err := service.Create(ctx, scope, actor, pluginservice.CreateInput{
+			PluginID: target.id, Content: rawSkill(target.name, "snapshot target"),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	current, err := service.Create(ctx, scope, actor, pluginservice.CreateInput{
+		PluginID: sourceID,
+		Content:  nullPlugin(contract.TypeExpert, "Snapshot Expert"),
+		Relations: []pluginservice.RelationInput{{
+			RelationType: contract.RelationExpertSkill, TargetPluginID: targetA,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyConcurrentReads(t, 300, func() error {
+		snapshot, err := service.Get(ctx, scope, sourceID)
+		if err != nil {
+			return err
+		}
+		want := targetA
+		if snapshot.Plugin.LockVersion%2 == 0 {
+			want = targetB
+		}
+		if len(snapshot.Relations) != 1 || snapshot.Relations[0].TargetPluginID != want {
+			return fmt.Errorf("lock_version=%d relations=%v, want target %s",
+				snapshot.Plugin.LockVersion, snapshot.Relations, want)
+		}
+		return nil
+	}, func(index int) error {
+		target := targetB
+		if index%2 == 1 {
+			target = targetA
+		}
+		next, err := service.ReplaceRelations(ctx, scope, sourceID, pluginservice.ReplaceRelationsInput{
+			ExpectedLockVersion: current.Plugin.LockVersion,
+			Relations: []pluginservice.RelationInput{{
+				RelationType: contract.RelationExpertSkill, TargetPluginID: target,
+			}},
+		})
+		if err == nil {
+			current = next
+		}
+		return err
+	})
+}
+
+func TestListReturnsOneCurrentSnapshot(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	scope := pluginservice.Scope{ID: fmt.Sprintf("list-snapshot-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const pluginID = "92000000-0000-4000-8000-000000000001"
+	current, err := service.Create(ctx, scope, actor, pluginservice.CreateInput{
+		PluginID: pluginID, Content: rawSkill("List Snapshot", "snapshot"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	active := contract.StatusActive
+	verifyConcurrentReads(t, 200, func() error {
+		page, err := service.List(ctx, scope, pluginservice.ListFilter{Status: &active})
+		if err != nil {
+			return err
+		}
+		if page.Total != int64(len(page.Items)) ||
+			len(page.Items) == 1 && page.Items[0].Status != contract.StatusActive {
+			return fmt.Errorf("active List total=%d items=%v", page.Total, page.Items)
+		}
+		return nil
+	}, func(index int) error {
+		status := contract.StatusArchived
+		if index%2 == 1 {
+			status = contract.StatusActive
+		}
+		next, err := service.SetStatus(ctx, scope, pluginID, pluginservice.SetStatusInput{
+			ExpectedLockVersion: current.Plugin.LockVersion, Status: status,
+		})
+		if err == nil {
+			current = next
+		}
+		return err
+	})
+}
+
+func TestListRevisionsReturnsOneCurrentSnapshot(t *testing.T) {
+	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
+	if err := Install(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := New(db)
+	service, _ := pluginservice.New(store)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	scope := pluginservice.Scope{ID: fmt.Sprintf("revision-snapshot-%d", time.Now().UnixNano())}
+	actor := pluginservice.Actor{ID: "actor-test"}
+	const pluginID = "93000000-0000-4000-8000-000000000001"
+	current, err := service.Create(ctx, scope, actor, pluginservice.CreateInput{
+		PluginID: pluginID, Content: rawSkill("Revision Snapshot", "revision-0"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyConcurrentReads(t, 50, func() error {
+		page, err := service.ListRevisions(ctx, scope, pluginID, pluginservice.PageRequest{PageSize: 100})
+		if err != nil {
+			return err
+		}
+		if page.Total != int64(len(page.Items)) || len(page.Items) == 0 ||
+			page.Items[0].RevisionNo != uint32(page.Total) {
+			return fmt.Errorf("Revision page total=%d items=%v", page.Total, page.Items)
+		}
+		return nil
+	}, func(index int) error {
+		next, err := service.Update(ctx, scope, actor, pluginID, pluginservice.UpdateInput{
+			ExpectedLockVersion: current.Plugin.LockVersion,
+			Content:             rawSkill("Revision Snapshot", fmt.Sprintf("revision-%d", index+1)),
+		})
+		if err == nil {
+			current = next
+		}
+		return err
+	})
+}
+
+func verifyConcurrentReads(t *testing.T, writes int, read func() error, write func(int) error) {
+	t.Helper()
+	const readerCount = 8
+	done := make(chan struct{})
+	ready := make(chan struct{}, readerCount)
+	errorsFound := make(chan error, readerCount+1)
+	var readers sync.WaitGroup
+	for range readerCount {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			first := true
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				err := read()
+				if first {
+					ready <- struct{}{}
+					first = false
+				}
+				if err != nil {
+					errorsFound <- err
+					return
+				}
+			}
+		}()
+	}
+	for range readerCount {
+		<-ready
+	}
+	for index := 0; index < writes; index++ {
+		if err := write(index); err != nil {
+			errorsFound <- err
+			break
+		}
+	}
+	close(done)
+	readers.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Error(err)
+	}
+}
+
 func TestVersionOverflowFailsClosed(t *testing.T) {
 	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
 	if err := Install(context.Background(), db); err != nil {
@@ -391,7 +730,7 @@ func TestVersionOverflowFailsClosed(t *testing.T) {
 	}
 	if _, err := db.Exec(`INSERT INTO plugin_revision
 (scope_id, plugin_id, revision_no, manifest_json, plugin_json, plugin_hash, created_by, created_at)
-VALUES (?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?)`, scope.ID, revisionID, uint64(math.MaxUint32),
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, scope.ID, revisionID, uint64(math.MaxUint32),
 		created.Revision.ManifestJSON, created.Revision.PluginJSON, created.Revision.PluginHash,
 		actor.ID, created.Revision.CreatedAt); err != nil {
 		t.Fatal(err)
@@ -416,7 +755,7 @@ VALUES (?, ?, ?, CAST(? AS JSON), CAST(? AS JSON), ?, ?, ?)`, scope.ID, revision
 		uint64(math.MaxUint32), scope.ID, lockID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.SetStatus(context.Background(), scope, actor, lockID, pluginservice.SetStatusInput{
+	if _, err := service.SetStatus(context.Background(), scope, lockID, pluginservice.SetStatusInput{
 		ExpectedLockVersion: math.MaxUint32, Status: contract.StatusArchived,
 	}); !errors.Is(err, pluginstore.ErrConflict) {
 		t.Fatalf("lock overflow error = %v", err)

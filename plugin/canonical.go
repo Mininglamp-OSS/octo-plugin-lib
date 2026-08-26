@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+const maxCanonicalNumberLength = 10_240
+
 // CanonicalJSON produces UTF-8 JSON with sorted object keys and exact decimal
 // number normalization. Unlike float-based encoders it does not lose integer
 // precision. Duplicate keys and impractically large numeric exponents fail.
@@ -131,7 +133,7 @@ func appendCanonical(output *bytes.Buffer, value any) error {
 }
 
 func canonicalNumber(value string) (string, error) {
-	if len(value) > 128 {
+	if len(value) > maxCanonicalNumberLength {
 		return "", fmt.Errorf("JSON number is too long")
 	}
 	negative := strings.HasPrefix(value, "-")
@@ -172,6 +174,9 @@ func canonicalNumber(value string) (string, error) {
 	}
 	if negative {
 		normalized = "-" + normalized
+	}
+	if len(normalized) > maxCanonicalNumberLength {
+		return "", fmt.Errorf("canonical JSON number is too long")
 	}
 	return normalized, nil
 }

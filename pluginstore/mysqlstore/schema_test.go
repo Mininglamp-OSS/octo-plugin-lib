@@ -36,6 +36,9 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 	for _, required := range []string{
 		"scope_id VARCHAR(40)", "status VARCHAR(16)", "current_revision_no INT UNSIGNED",
 		"lock_version INT UNSIGNED", "chk_plugin_revision_plugin_hash", "chk_plugin_status",
+		"description LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
+		"manifest_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
+		"plugin_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"PRIMARY KEY (scope_id, plugin_id, revision_no)",
 		"PRIMARY KEY (scope_id, source_plugin_id, relation_type, target_plugin_id)",
 		"KEY idx_plugin_scope_updated (scope_id, updated_at DESC, id DESC)",
@@ -44,6 +47,9 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 		if !strings.Contains(ddl, required) {
 			t.Errorf("schema is missing %q", required)
 		}
+	}
+	if strings.Contains(ddl, "JSON_VALID") {
+		t.Fatal("schema delegates the public JSON numeric domain to MySQL")
 	}
 }
 

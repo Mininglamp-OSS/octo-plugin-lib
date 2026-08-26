@@ -1,6 +1,6 @@
 module github.com/Mininglamp-OSS/octo-plugin-lib
 
-go 1.25.0
+go 1.25.11
 
 require (
 	github.com/dlclark/regexp2 v1.11.0

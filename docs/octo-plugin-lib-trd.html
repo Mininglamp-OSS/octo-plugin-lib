@@ -47,6 +47,8 @@ pre{overflow:auto;background:#0f172a;color:#e2e8f0;padding:1rem;border-radius:10
 <div class="card"><h3>明确不包含</h3><p>跨宿主传输封装、市场版本与来源、发布回 Market、<code>cowork_plugin_audit_log</code> 和网络服务。</p></div>
 </div>
 <p>Market、Loop、Buddy 及其他宿主引用同一个库，但使用各自的 database/schema、账号与 Bucket。</p>
+<p>只有会创建 Revision 的操作向 Lib 传入 Actor 并写入 <code>created_by</code>；
+SetStatus 与 ReplaceRelations 的操作人授权和审计属于宿主。</p>
 </section>
 
 <section id="contract"><h2>2. 公共机器契约</h2>
@@ -109,7 +111,7 @@ Plugin/Manifest 一致性、Hash、时间顺序、Relation 端点和类型专属
 描述；Expert Team 只能包含 <code>AGENTS.md</code>；Connector 按下表约束。</p>
 <p><code>plugin_hash = sha256(canonical(manifest_json) + canonical(plugin_json))</code>。Attachment
 按 path 排序，其数组顺序不影响 Hash；其他数组保序。Canonical JSON 不等同于 RFC 8785/JCS。
-数字文本最长 128，指数范围为 -10000～10000；对象键按 Unicode scalar value 升序排列，
+数字词法及规范化结果最长 10,240 字符，指数范围为 -10000～10000；对象键按 Unicode scalar value 升序排列，
 对合法 UTF-8 等价于 UTF-8 字节序，不得使用 UTF-16 code-unit 默认顺序。字符串使用 Go
 <code>encoding/json</code> 规则，<code>&lt;</code>、<code>&gt;</code>、<code>&amp;</code>、U+2028、U+2029
 使用 <code>\u</code> 转义。对象排序 O(k log k)，内存与规范化输出之和同阶，指数展开最多增加约 10,000 个展开字符；
@@ -130,8 +132,12 @@ fixtures 和 golden Hash。</p>
 <li>CreateGraph 校验闭包后一次提交；失败全部回滚。</li>
 <li>MySQL DSN 必须含 <code>parseTime=true&amp;loc=UTC</code>；Install 实际往返 UTC 微秒时间并拒绝错误配置。</li>
 <li>Revision 不可变由公开 API/Store 保证，不使用数据库 trigger；宿主数据库账号不得用原始 SQL 绕过。</li>
-<li>结构指纹已在 MySQL 8.0.46 与 8.4.9 验证。</li>
-<li>List 使用页码/offset 并返回当前页，不提供跨请求快照；并发更新可能使项目换页，调用方应刷新。</li>
+<li>结构指纹已在 MySQL 8.0.46 验证；MySQL 8.4 仍需 CI 或可用镜像补验。</li>
+<li>Get、List 和 ListRevisions 的普通调用使用只读 REPEATABLE READ 事务；Get 的 Plugin、Revision、Relation 一致，两个列表的总数与当前页一致。WithTx 读取遵循宿主事务隔离级别。</li>
+<li><code>manifest_json/plugin_json</code> 使用 <code>utf8mb4_bin LONGTEXT</code> 精确保留 Canonical JSON；不用会重编码或拒绝部分公共数值的 MySQL JSON 解析器。<code>Get/GetRevision</code> 复核 Canonical 字节、公共契约和 <code>plugin_hash</code>，内容漂移时返回 <code>INTEGRITY_FAILURE</code>；<code>List</code> 不读取大文件树，只校验返回的 Manifest 及主表投影。</li>
+<li><code>plugin.description</code> 是当前 Manifest description 的事务性查询投影，只服务名称/描述搜索；Manifest 仍是权威真源，读取时校验一致。</li>
+<li>生产环境分离迁移账号与最小权限运行时账号；最低工具链为 Go 1.25.11。</li>
+<li>List 使用页码/offset；单次调用一致，但不提供跨请求快照。并发更新可能使项目换页，调用方应刷新。</li>
 </ul>
 </section>
 
