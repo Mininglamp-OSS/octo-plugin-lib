@@ -88,6 +88,26 @@ func TestStatusAndScopeValidation(t *testing.T) {
 	}
 }
 
+func TestServicePreservesContractValidationError(t *testing.T) {
+	service, err := New(&stubStore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.Create(context.Background(), Scope{ID: "scope-test"}, Actor{ID: "actor-test"}, CreateInput{
+		PluginID: testPluginID,
+		Content: ContentInput{
+			PluginType:   contract.TypeSkill,
+			ManifestJSON: []byte(`{"$schema":"cowork-plugin-manifest-2.0.json","plugin_name":"Skill","plugin_type":"skill","name":"Skill"}`),
+			PluginJSON:   []byte("null"),
+		},
+	})
+	var violation *contract.ValidationError
+	if !errors.Is(err, pluginstore.ErrInvalidArgument) || !errors.As(err, &violation) ||
+		violation.Code != contract.CodeInvalidField || violation.Path != "manifest_json.description" {
+		t.Fatalf("Create validation error = %v", err)
+	}
+}
+
 func TestReplaceRelationsValidatesAndSorts(t *testing.T) {
 	store := &stubStore{snapshot: pluginstore.Snapshot{Plugin: pluginstore.Plugin{
 		ScopeID: "scope-test", PluginID: testPluginID, PluginType: contract.TypeExpert,

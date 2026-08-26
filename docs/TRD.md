@@ -144,6 +144,8 @@ LIKE 搜索。当前页码分页不是跨请求快照：分页期间发生更新
 Store 对外稳定分类为 `INVALID_ARGUMENT/NOT_FOUND/ALREADY_EXISTS/CONFLICT/`
 `INTEGRITY_FAILURE/INTERNAL`。CAS 冲突、死锁和锁等待超时归为 `CONFLICT`；主键冲突归为
 `ALREADY_EXISTS`；外键和 CHECK 失败归为 `INTEGRITY_FAILURE`。失败的自管事务全部回滚。
+Service 返回契约校验错误时同时匹配 `pluginstore.ErrInvalidArgument` 和原始
+`plugin.ValidationError`；宿主可安全读取稳定的 `Code/Path`，不能解析错误文本做流程判断。
 `WithTx` 仍由宿主最终提交或回滚，但每次 Lib 写调用建立 SAVEPOINT；调用失败只回滚该次
 调用，宿主之前的写入仍可继续使用。若 SAVEPOINT 回滚或释放失败，Lib 主动回滚整个宿主
 事务并返回匹配 `pluginstore.ErrTransactionAborted` 的错误，此时宿主必须重开事务，不能重试

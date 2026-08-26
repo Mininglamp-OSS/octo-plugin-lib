@@ -205,6 +205,9 @@ scope 隔离、事务回滚、图原子性、结构漂移和独立 GOWORK=off �
 <code>invalid_relation</code>、<code>invalid_attachment_path</code>、
 <code>duplicate_attachment_path</code>、<code>invalid_attachment_content</code>、
 <code>hash_mismatch</code>。</p>
+<p>Service 返回契约校验错误时同时保留 <code>pluginstore.ErrInvalidArgument</code> 与原始
+<code>plugin.ValidationError</code>，宿主通过 <code>errors.As</code> 读取稳定的
+<code>Code/Path</code>，不得解析错误文本。</p>
 <p>发布首个稳定版本后，同一 Schema ID 的内容不可变。</p>
 </section>
 </main>

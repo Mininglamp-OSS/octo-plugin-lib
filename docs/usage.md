@@ -53,6 +53,8 @@ archived, err := plugins.SetStatus(ctx, scope, actor, pluginID, pluginservice.Se
 外部 JSON 先通过 `plugin.DecodePlugin`、`plugin.DecodeRelation` 或
 `plugin.DecodeRevisionContent` 严格解码；这些入口会拒绝未知字段，并执行 Schema 无法
 表达的跨字段、Hash 和时间语义。只有已经由宿主组装成强类型值时才直接调用 `Validate*`。
+Service 的契约校验错误同时匹配 `pluginstore.ErrInvalidArgument` 和原始
+`*plugin.ValidationError`；宿主通过 `errors.As` 读取稳定 `Code/Path`，不要解析错误文本。
 
 创建固定为 `ACTIVE`。内容、状态和关系各自独立修改，但共享 `lock_version`；客户端必须
 使用最近一次读取的值处理 CAS 冲突。

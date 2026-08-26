@@ -399,5 +399,5 @@ func validateIdentifier(field, value string, maximum int) error {
 }
 
 func invalid(err error) error {
-	return fmt.Errorf("%w: %v", pluginstore.ErrInvalidArgument, err)
+	return fmt.Errorf("%w: %w", pluginstore.ErrInvalidArgument, err)
 }
