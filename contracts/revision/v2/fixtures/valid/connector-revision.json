@@ -1,0 +1,12 @@
+{
+  "plugin_type": "connector",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Remote MCP",
+    "plugin_type": "connector",
+    "name": "Remote MCP",
+    "description": "Connects to MCP"
+  },
+  "plugin_json": null,
+  "plugin_hash": "sha256:6b6d3df2e83d7aeae3b54991faf1adfbc0750089f1d0695222aa5ee8fb917c92"
+}

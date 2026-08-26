@@ -1,0 +1,23 @@
+{
+  "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f5555",
+  "plugin_name": "Lark MCP 连接器",
+  "plugin_type": "connector",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Lark MCP 连接器",
+    "plugin_type": "connector",
+    "name": "Lark MCP 连接器",
+    "description": "通过 MCP 调用 Lark 能力。"
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "connector": { "type": "mcp", "source": "connector.lark-mcp" },
+    "attachments": [
+      { "path": "mcp.json", "content_type": "raw", "mime_type": "application/json", "raw_content": "{}" }
+    ]
+  },
+  "plugin_hash": "sha256:2554a64144b7d0a44f34c2e08b9a8fdd6cdab61de29f5957752fa73ba53b745f",
+  "status": "ACTIVE",
+  "created_at": "2026-08-21T08:00:00Z",
+  "updated_at": "2026-08-21T08:00:00Z"
+}

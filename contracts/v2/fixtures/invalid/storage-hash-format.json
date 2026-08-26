@@ -1,0 +1,12 @@
+{
+  "$schema": "cowork-plugin-package-2.0.json",
+  "attachments": [
+    {
+      "path": "SKILL.md",
+      "content_type": "storage",
+      "mime_type": "text/markdown",
+      "content_size": 15,
+      "content_hash": "not-a-sha256"
+    }
+  ]
+}

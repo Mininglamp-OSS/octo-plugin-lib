@@ -1,0 +1,7 @@
+{
+  "$schema": "cowork-plugin-manifest-2.0.json",
+  "plugin_name": "Skill",
+  "plugin_type": "skill",
+  "name": "\u0085",
+  "description": ""
+}

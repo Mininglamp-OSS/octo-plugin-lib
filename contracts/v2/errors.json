@@ -1,0 +1,14 @@
+{
+  "contract_version": "2.0.0",
+  "codes": [
+    "invalid_json",
+    "invalid_field",
+    "invalid_plugin_type",
+    "invalid_relation_type",
+    "invalid_relation",
+    "invalid_attachment_path",
+    "duplicate_attachment_path",
+    "invalid_attachment_content",
+    "hash_mismatch"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f8888",
+  "plugin_name": "OpenConnector",
+  "plugin_type": "connector",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "OpenConnector",
+    "plugin_type": "connector",
+    "name": "OpenConnector",
+    "description": "通过统一 OAuth2 网关调用外部服务。"
+  },
+  "plugin_json": {
+    "$schema": "cowork-plugin-package-2.0.json",
+    "connector": { "type": "openconnector", "source": "connector.openconnector.oauth2" },
+    "attachments": [
+      { "path": "mcp.json", "content_type": "raw", "mime_type": "application/json", "raw_content": "{}" }
+    ]
+  },
+  "plugin_hash": "sha256:8fd657f28731804354e1d7e70d86eefeae81931ef3f7a4ac7839d1ca432da3dd",
+  "status": "ACTIVE",
+  "created_at": "2026-08-21T08:00:00Z",
+  "updated_at": "2026-08-21T08:00:00Z"
+}

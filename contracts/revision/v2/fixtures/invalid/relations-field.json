@@ -1,0 +1,13 @@
+{
+  "plugin_type": "skill",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Invalid Revision",
+    "plugin_type": "skill",
+    "name": "Invalid Revision",
+    "description": "Relations are current state, not Revision content"
+  },
+  "plugin_json": null,
+  "plugin_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "relations": []
+}

@@ -1,0 +1,228 @@
+{
+  "cases": [
+    {
+      "name": "plugin-manifest-name-mismatch",
+      "validator": "plugin",
+      "expected_code": "invalid_field",
+      "input": {
+        "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f3333",
+        "plugin_name": "Different Name",
+        "plugin_type": "skill",
+        "manifest_json": {
+          "$schema": "cowork-plugin-manifest-2.0.json",
+          "plugin_name": "PRD 拆解技能",
+          "plugin_type": "skill",
+          "name": "PRD 拆解技能",
+          "description": "把需求拆为背景、目标、范围、风险和验收标准。"
+        },
+        "plugin_json": {
+          "$schema": "cowork-plugin-package-2.0.json",
+          "attachments": [
+            {
+              "path": "SKILL.md",
+              "content_type": "raw",
+              "mime_type": "text/markdown",
+              "raw_content": "# PRD 拆解技能\n"
+            }
+          ]
+        },
+        "plugin_hash": "sha256:21a4f7c9c7d97d58c44da3d39169cba9fa32500843c9d5189228e8108aa979d3",
+        "status": "ACTIVE",
+        "created_at": "2026-08-21T08:00:00Z",
+        "updated_at": "2026-08-21T08:00:00Z"
+      }
+    },
+    {
+      "name": "plugin-manifest-type-mismatch",
+      "validator": "plugin",
+      "expected_code": "invalid_field",
+      "input": {
+        "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f3333",
+        "plugin_name": "PRD 拆解技能",
+        "plugin_type": "expert",
+        "manifest_json": {
+          "$schema": "cowork-plugin-manifest-2.0.json",
+          "plugin_name": "PRD 拆解技能",
+          "plugin_type": "skill",
+          "name": "PRD 拆解技能",
+          "description": "把需求拆为背景、目标、范围、风险和验收标准。"
+        },
+        "plugin_json": {
+          "$schema": "cowork-plugin-package-2.0.json",
+          "attachments": [
+            {
+              "path": "SKILL.md",
+              "content_type": "raw",
+              "mime_type": "text/markdown",
+              "raw_content": "# PRD 拆解技能\n"
+            }
+          ]
+        },
+        "plugin_hash": "sha256:21a4f7c9c7d97d58c44da3d39169cba9fa32500843c9d5189228e8108aa979d3",
+        "status": "ACTIVE",
+        "created_at": "2026-08-21T08:00:00Z",
+        "updated_at": "2026-08-21T08:00:00Z"
+      }
+    },
+    {
+      "name": "plugin-hash-mismatch",
+      "validator": "plugin",
+      "expected_code": "hash_mismatch",
+      "input": {
+        "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f3333",
+        "plugin_name": "PRD 拆解技能",
+        "plugin_type": "skill",
+        "manifest_json": {
+          "$schema": "cowork-plugin-manifest-2.0.json",
+          "plugin_name": "PRD 拆解技能",
+          "plugin_type": "skill",
+          "name": "PRD 拆解技能",
+          "description": "把需求拆为背景、目标、范围、风险和验收标准。"
+        },
+        "plugin_json": {
+          "$schema": "cowork-plugin-package-2.0.json",
+          "attachments": [
+            {
+              "path": "SKILL.md",
+              "content_type": "raw",
+              "mime_type": "text/markdown",
+              "raw_content": "# PRD 拆解技能\n"
+            }
+          ]
+        },
+        "plugin_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "status": "ACTIVE",
+        "created_at": "2026-08-21T08:00:00Z",
+        "updated_at": "2026-08-21T08:00:00Z"
+      }
+    },
+    {
+      "name": "plugin-time-order",
+      "validator": "plugin",
+      "expected_code": "invalid_field",
+      "input": {
+        "plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f3333",
+        "plugin_name": "PRD 拆解技能",
+        "plugin_type": "skill",
+        "manifest_json": {
+          "$schema": "cowork-plugin-manifest-2.0.json",
+          "plugin_name": "PRD 拆解技能",
+          "plugin_type": "skill",
+          "name": "PRD 拆解技能",
+          "description": "把需求拆为背景、目标、范围、风险和验收标准。"
+        },
+        "plugin_json": {
+          "$schema": "cowork-plugin-package-2.0.json",
+          "attachments": [
+            {
+              "path": "SKILL.md",
+              "content_type": "raw",
+              "mime_type": "text/markdown",
+              "raw_content": "# PRD 拆解技能\n"
+            }
+          ]
+        },
+        "plugin_hash": "sha256:21a4f7c9c7d97d58c44da3d39169cba9fa32500843c9d5189228e8108aa979d3",
+        "status": "ACTIVE",
+        "created_at": "2026-08-21T08:00:00Z",
+        "updated_at": "2026-08-21T07:59:59Z"
+      }
+    },
+    {
+      "name": "relation-self-reference",
+      "validator": "relation",
+      "expected_code": "invalid_relation",
+      "input": {
+        "source_plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f1111",
+        "target_plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f1111",
+        "relation_type": "expert_skill"
+      }
+    },
+    {
+      "name": "relation-endpoint-types",
+      "validator": "relation_endpoints",
+      "source_plugin_type": "skill",
+      "target_plugin_type": "expert",
+      "expected_code": "invalid_relation",
+      "input": {
+        "source_plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f1111",
+        "target_plugin_id": "018f7f0a-9c2b-7c31-a101-8b5d7b2f3333",
+        "relation_type": "expert_skill"
+      }
+    },
+    {
+      "name": "expert-package-shape",
+      "validator": "package",
+      "plugin_type": "expert",
+      "expected_code": "invalid_field",
+      "input": {
+        "$schema": "cowork-plugin-package-2.0.json",
+        "attachments": [
+          {
+            "path": "SKILL.md",
+            "content_type": "raw",
+            "mime_type": "text/markdown",
+            "raw_content": "# Wrong shape"
+          }
+        ]
+      }
+    },
+    {
+      "name": "skill-package-shape",
+      "validator": "package",
+      "plugin_type": "skill",
+      "expected_code": "invalid_field",
+      "input": {
+        "$schema": "cowork-plugin-package-2.0.json",
+        "attachments": [
+          {
+            "path": "AGENTS.md",
+            "content_type": "raw",
+            "mime_type": "text/markdown",
+            "raw_content": "# Wrong shape"
+          }
+        ]
+      }
+    },
+    {
+      "name": "expert-team-package-shape",
+      "validator": "package",
+      "plugin_type": "expert_team",
+      "expected_code": "invalid_field",
+      "input": {
+        "$schema": "cowork-plugin-package-2.0.json",
+        "attachments": [
+          {
+            "path": "AGENTS.md",
+            "content_type": "raw",
+            "mime_type": "text/markdown",
+            "raw_content": "# Team"
+          },
+          {
+            "path": "README.md",
+            "content_type": "raw",
+            "mime_type": "text/markdown",
+            "raw_content": "extra"
+          }
+        ]
+      }
+    },
+    {
+      "name": "connector-package-shape",
+      "validator": "package",
+      "plugin_type": "connector",
+      "expected_code": "invalid_field",
+      "input": {
+        "$schema": "cowork-plugin-package-2.0.json",
+        "attachments": [
+          {
+            "path": "mcp.json",
+            "content_type": "raw",
+            "mime_type": "application/json",
+            "raw_content": "{}"
+          }
+        ]
+      }
+    }
+  ]
+}

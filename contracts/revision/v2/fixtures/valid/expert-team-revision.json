@@ -1,0 +1,12 @@
+{
+  "plugin_type": "expert_team",
+  "manifest_json": {
+    "$schema": "cowork-plugin-manifest-2.0.json",
+    "plugin_name": "Research Team",
+    "plugin_type": "expert_team",
+    "name": "Research Team",
+    "description": "Coordinates experts"
+  },
+  "plugin_json": null,
+  "plugin_hash": "sha256:190384941a918aea4d233e9f527493313efa7774b1c58178bc0d855595512bf3"
+}

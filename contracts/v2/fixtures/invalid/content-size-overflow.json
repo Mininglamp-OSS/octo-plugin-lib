@@ -1,0 +1,12 @@
+{
+  "$schema": "cowork-plugin-package-2.0.json",
+  "attachments": [
+    {
+      "path": "assets/archive.bin",
+      "content_type": "storage",
+      "mime_type": "application/octet-stream",
+      "content_size": 9007199254740992,
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

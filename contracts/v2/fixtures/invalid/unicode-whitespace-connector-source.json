@@ -1,0 +1,15 @@
+{
+  "$schema": "cowork-plugin-package-2.0.json",
+  "connector": {
+    "type": "openconnector",
+    "source": "\u0085"
+  },
+  "attachments": [
+    {
+      "path": "mcp.json",
+      "content_type": "raw",
+      "mime_type": "application/json",
+      "raw_content": "{}"
+    }
+  ]
+}

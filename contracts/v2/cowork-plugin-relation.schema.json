@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cowork-plugin-relation-2.0.json",
+  "title": "Cowork Plugin Relation 2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_plugin_id", "target_plugin_id", "relation_type"],
+  "properties": {
+    "source_plugin_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "target_plugin_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "relation_type": { "enum": ["expert_team_expert", "expert_skill", "expert_connector"] }
+  }
+}
