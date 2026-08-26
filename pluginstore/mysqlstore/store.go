@@ -92,6 +92,9 @@ func (store *Store) Get(ctx context.Context, scopeID, pluginID string) (result p
 }
 
 func (store *Store) GetRevision(ctx context.Context, scopeID, pluginID string, revisionNo uint32) (pluginstore.Revision, error) {
+	if store == nil || store.db == nil {
+		return pluginstore.Revision{}, pluginstore.ErrStorage
+	}
 	return getRevision(ctx, store.reader(), scopeID, pluginID, revisionNo)
 }
 
@@ -228,7 +231,7 @@ func (store *Store) read(ctx context.Context, operation func(database) error) er
 	if store.tx != nil {
 		return operation(store.tx)
 	}
-	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	tx, err := store.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
 	if err != nil {
 		return storageError("begin read transaction", err)
 	}

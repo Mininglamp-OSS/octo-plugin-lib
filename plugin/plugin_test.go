@@ -287,9 +287,10 @@ func TestCanonicalJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fixture struct {
-		MaxNesting          int `json:"max_nesting"`
-		MaxNumberCharacters int `json:"max_number_characters"`
-		Cases               []struct {
+		MaxNesting              int `json:"max_nesting"`
+		MaxNumberCharacters     int `json:"max_number_characters"`
+		MaxTotalNumberExpansion int `json:"max_total_number_expansion"`
+		Cases                   []struct {
 			Name      string `json:"name"`
 			Input     string `json:"input"`
 			Canonical string `json:"canonical"`
@@ -318,7 +319,7 @@ func TestCanonicalJSON(t *testing.T) {
 	}
 	for _, input := range fixture.InvalidInputs {
 		if _, err := plugin.CanonicalJSON([]byte(input)); err == nil {
-			t.Fatalf("CanonicalJSON() accepted isolated surrogate: %s", input)
+			t.Fatalf("CanonicalJSON() accepted invalid input: %s", input)
 		}
 	}
 	if got, err := plugin.CanonicalJSON([]byte(`{"text":"\ud834\udd1e"}`)); err != nil || string(got) != `{"text":"𝄞"}` {
@@ -338,6 +339,9 @@ func TestCanonicalJSON(t *testing.T) {
 	}
 	if fixture.MaxNumberCharacters != 10_240 {
 		t.Fatalf("canonical fixture max_number_characters = %d, want 10240", fixture.MaxNumberCharacters)
+	}
+	if fixture.MaxTotalNumberExpansion != 10_240 {
+		t.Fatalf("canonical fixture max_total_number_expansion = %d, want 10240", fixture.MaxTotalNumberExpansion)
 	}
 	if fixture.MaxNesting != 512 {
 		t.Fatalf("canonical fixture max_nesting = %d, want 512", fixture.MaxNesting)
@@ -696,7 +700,7 @@ func TestDocumentationMatchesContract(t *testing.T) {
 		if !strings.Contains(string(data), "9007199254740991") {
 			t.Errorf("%s does not document the content_size JavaScript-safe limit", filename)
 		}
-		for _, phrase := range []string{"数字词法及规范化结果最长 10,240 字符", "指数范围为 -10000～10000", "O(k log k)", "规范化输出之和同阶", "最多增加约 10,000 个展开字符"} {
+		for _, phrase := range []string{"数字词法及规范化结果最长 10,240 字符", "累计数字展开增量最多 10,240 字符", "指数范围为 -10000～10000", "O(k log k)", "规范化输出之和同阶"} {
 			if !strings.Contains(string(data), phrase) {
 				t.Errorf("%s does not document canonical JSON boundary %q", filename, phrase)
 			}

@@ -11,7 +11,10 @@ import (
 	"strings"
 )
 
-const maxCanonicalNumberLength = 10_240
+const (
+	maxCanonicalNumberLength    = 10_240
+	maxCanonicalNumberExpansion = 10_240
+)
 
 // CanonicalJSON produces UTF-8 JSON with sorted object keys and exact decimal
 // number normalization. Unlike float-based encoders it does not lose integer
@@ -22,7 +25,7 @@ func CanonicalJSON(raw []byte) ([]byte, error) {
 		return nil, err
 	}
 	var output bytes.Buffer
-	if err := appendCanonical(&output, value); err != nil {
+	if err := appendCanonicalDocument(&output, value); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
@@ -68,7 +71,7 @@ func canonicalPackageJSON(raw []byte) ([]byte, error) {
 		}
 	}
 	var output bytes.Buffer
-	if err := appendCanonical(&output, value); err != nil {
+	if err := appendCanonicalDocument(&output, value); err != nil {
 		return nil, err
 	}
 	return output.Bytes(), nil
@@ -81,7 +84,12 @@ func computePluginHashCanonical(manifest, packageValue []byte) string {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
 }
 
-func appendCanonical(output *bytes.Buffer, value any) error {
+func appendCanonicalDocument(output *bytes.Buffer, value any) error {
+	numberExpansion := 0
+	return appendCanonical(output, value, &numberExpansion)
+}
+
+func appendCanonical(output *bytes.Buffer, value any, numberExpansion *int) error {
 	switch current := value.(type) {
 	case nil:
 		output.WriteString("null")
@@ -91,9 +99,16 @@ func appendCanonical(output *bytes.Buffer, value any) error {
 		encoded, _ := json.Marshal(current)
 		output.Write(encoded)
 	case json.Number:
-		number, err := canonicalNumber(current.String())
+		raw := current.String()
+		number, err := canonicalNumber(raw)
 		if err != nil {
 			return invalid(CodeInvalidJSON, "", err.Error())
+		}
+		if growth := len(number) - len(raw); growth > 0 {
+			if growth > maxCanonicalNumberExpansion-*numberExpansion {
+				return invalid(CodeInvalidJSON, "", "canonical JSON number expansion exceeds 10240 characters")
+			}
+			*numberExpansion += growth
 		}
 		output.WriteString(number)
 	case []any:
@@ -102,7 +117,7 @@ func appendCanonical(output *bytes.Buffer, value any) error {
 			if index > 0 {
 				output.WriteByte(',')
 			}
-			if err := appendCanonical(output, item); err != nil {
+			if err := appendCanonical(output, item, numberExpansion); err != nil {
 				return err
 			}
 		}
@@ -121,7 +136,7 @@ func appendCanonical(output *bytes.Buffer, value any) error {
 			encoded, _ := json.Marshal(key)
 			output.Write(encoded)
 			output.WriteByte(':')
-			if err := appendCanonical(output, current[key]); err != nil {
+			if err := appendCanonical(output, current[key], numberExpansion); err != nil {
 				return err
 			}
 		}

@@ -266,7 +266,7 @@ func DecodePackage(pluginType Type, raw json.RawMessage) (Package, error) {
 	}
 	var packageValue Package
 	var normalized bytes.Buffer
-	if err := appendCanonical(&normalized, value); err != nil {
+	if err := appendCanonicalDocument(&normalized, value); err != nil {
 		return Package{}, withPath(err, "plugin_json")
 	}
 	decoder := json.NewDecoder(&normalized)
@@ -481,7 +481,7 @@ func decodeStrict(raw []byte, output any) error {
 		return err
 	}
 	var normalized bytes.Buffer
-	if err := appendCanonical(&normalized, value); err != nil {
+	if err := appendCanonicalDocument(&normalized, value); err != nil {
 		return err
 	}
 	decoder := json.NewDecoder(&normalized)

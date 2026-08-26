@@ -1,6 +1,7 @@
 {
   "max_nesting": 512,
   "max_number_characters": 10240,
+  "max_total_number_expansion": 10240,
   "cases": [
     {
       "name": "object-order-and-decimal",
@@ -31,6 +32,7 @@
   "invalid_inputs": [
     "1e10001",
     "1e-10001",
+    "[1e10000,1e10000]",
     "{\"text\":\"\\ud800\"}",
     "{\"text\":\"\\udc00\"}",
     "{\"text\":\"\\ud800x\"}"

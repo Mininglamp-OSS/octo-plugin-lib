@@ -75,6 +75,13 @@ func TestStorageErrorPreservesContextCancellation(t *testing.T) {
 	}
 }
 
+func TestNilStoreGetRevisionFailsClosed(t *testing.T) {
+	var store *Store
+	if _, err := store.GetRevision(context.Background(), "scope", "plugin", 1); !errors.Is(err, pluginstore.ErrStorage) {
+		t.Fatalf("GetRevision() error = %v, want ErrStorage", err)
+	}
+}
+
 func TestRetryableMySQLErrorsAreConflicts(t *testing.T) {
 	for _, number := range []uint16{1205, 1213} {
 		err := mapWriteError("update", &driver.MySQLError{Number: number})

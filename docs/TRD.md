@@ -81,11 +81,12 @@ Team 只能有 `AGENTS.md`；Connector 必须有 Connector 描述，且 `mcp/ope
 `plugin_hash = sha256(canonical(manifest_json) + canonical(plugin_json))`。
 Attachment 按 path 排序，所以其数组顺序不改变 Hash；其他数组保持顺序。Canonical JSON
 不等同于 RFC 8785/JCS。数字词法及规范化结果最长 10,240 字符，指数范围为 -10000～10000；
+一份 JSON 文档累计数字展开增量最多 10,240 字符，避免少量指数词法放大为无界内存；
 对象键排序为
 Unicode scalar value 升序；对合法 UTF-8 等价于 UTF-8 字节序，不得使用 UTF-16 code-unit
 默认顺序。字符串使用 Go `encoding/json` 的转义规则，`<`、`>`、`&`、U+2028、
-U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化输出之和同阶，指数展开
-最多增加约 10,000 个展开字符；JSON 最多嵌套 512 个 object/array 容器。UUID 只校验
+U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化输出之和同阶；JSON
+最多嵌套 512 个 object/array 容器。UUID 只校验
 小写文本形状，不校验 UUID version 或 variant。孤立 UTF-16 surrogate 转义被拒绝，避免
 跨语言 Hash 分叉。跨语言实现必须同时执行 JSON Schema、semantic fixtures 和 golden Hash。
 
@@ -106,11 +107,13 @@ U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化�
 Plugin 行，按 `current_revision_no + 1` 分配序号并切换指针。图创建先完整校验闭包，
 再在一个事务内写入所有节点和关系；任何失败全部回滚。时间统一为 UTC 微秒，MySQL DSN
 必须含 `parseTime=true&loc=UTC`；`Install` 通过已知 UTC 微秒时间往返检查该配置并 fail
-closed。当前结构指纹已在 MySQL 8.0.46 验证；MySQL 8.4 仍需 CI 或可用镜像补验。
+closed。当前结构指纹已在 MySQL 8.0.46 和 8.4.10 验证。
 
-`Get`、`List` 和 `ListRevisions` 的非绑定调用在只读 `REPEATABLE READ` 事务中完成各自
-所有 SQL。`Get` 不会在并发关系替换时混合旧 `lock_version` 与新 Relation；两个列表的
-总数和当前页也来自同一个数据库快照。`WithTx` 绑定读取则遵循宿主事务的隔离级别和快照。
+`Get`、`List` 和 `ListRevisions` 的非绑定调用在 `REPEATABLE READ` 快照事务中完成各自
+所有 SQL。事务不声明 `READ ONLY`，避免数据库代理把需要读己之写的请求误路由到延迟副本；
+宿主连接仍必须指向满足读己之写的节点。`Get` 不会在并发关系替换时混合旧
+`lock_version` 与新 Relation；两个列表的总数和当前页也来自同一个数据库快照。
+`WithTx` 绑定读取遵循宿主事务的隔离级别和快照。
 
 Revision 不可变由公开 Service/Store API 不提供 Update/Delete 保证；Lib 不创建数据库
 trigger。宿主必须限制应用数据库账号及原始 SQL 权限，不能绕过 Lib 改写历史。
@@ -122,14 +125,17 @@ Canonical JSON 支持精确十进制；原生 JSON 的二进制重编码可能�
 写入必须通过 Lib 完成结构、语义和 Hash 校验；`Get/GetRevision` 完整内容读取时重新校验
 Canonical 字节、公共契约和 `plugin_hash`，数据库内容被绕过 Store 改写、无法通过公共契约
 校验或与 Hash 不一致时返回 `INTEGRITY_FAILURE`，不得把损坏内容交给宿主。`List` 不读取可能
-很大的 `plugin_json`，只校验返回的 Manifest 为 Canonical 且与主表名称、描述和类型投影一致；
-宿主仍必须通过最小数据库权限禁止绕过 Store 修改 Revision。
+很大的 `plugin_json`，只校验查询命中并返回行的 Manifest 为 Canonical 且与主表名称、描述和
+类型投影一致；`ListRevisions` 只返回元数据，调用方使用内容或 Hash 前必须调用
+`GetRevision`。投影被越权改坏后，按真实 Manifest 描述筛选可能漏掉损坏行，因此生产账号必须
+依靠最小权限阻止绕过 Store；发现损坏时停写并由管理员从可信来源重建，不提供在线猜测修复。
 
 `plugin.description` 是当前 Manifest description 的查询投影，用于名称/描述搜索；它由
 Service 在创建或切换当前 Revision 的同一事务内派生更新，读取时与当前 Manifest 交叉核对。
 Manifest 仍是权威真源，该投影不进入公共 JSON、Hash 或 Revision 身份。
 生产环境应分离迁移账号与运行时账号；运行时只授予三表 CRUD 实际需要的最小权限，不授予
-Revision UPDATE/DELETE、Plugin DELETE 或 DDL 权限。最低工具链为 Go 1.25.11。
+Revision UPDATE/DELETE、Plugin DELETE 或 DDL 权限。调用方最低 Go 语言版本为 1.25；本仓库
+使用 Go 1.25.11 工具链验证。
 
 列表按 `scope_id, updated_at DESC, id DESC` 分页；名称和当前 Revision 描述支持字面
 LIKE 搜索。单次调用内的总数和当前页一致，但页码分页不是跨请求快照：分页期间发生更新时，
@@ -177,12 +183,14 @@ Service 返回契约校验错误时同时匹配 `pluginstore.ErrInvalidArgument`
 事务，返回的错误同样匹配该 sentinel。
 
 本库不自动迁移旧表。产品未上线时，宿主使用新空 database/schema 安装；结构指纹不一致
-即拒绝启动，避免猜测性改表或静默丢数据。
+即拒绝启动，避免猜测性改表或静默丢数据。旧 MySQL JSON 列不能直接 `ALTER` 为 LONGTEXT：
+MySQL 已经重编码的数据无法恢复原 Canonical 字节。采用旧实验结构的宿主必须从可信原始内容
+通过当前 Lib 重新校验并导入新空库，不能把列类型原地修改冒充迁移。
 
 ## 8. 验收
 
 - JSON Schema、Go 语义校验、fixtures、golden Hash 和字段漂移测试通过；
 - unit、race、vet、build 通过；
-- MySQL 8.0.46 fresh install、重复 Install、CRUD、CAS、SAVEPOINT 回滚、scope 隔离、
-  图原子性和结构漂移检测通过；MySQL 8.4 需在 CI 或可用镜像环境补验；
+- MySQL 8.0.46、8.4.10 fresh install、重复 Install、CRUD、CAS、SAVEPOINT 回滚、scope
+  隔离、图原子性和结构漂移检测通过；
 - 独立 `GOWORK=off` 消费者可下载并编译正式版本。
