@@ -13,12 +13,12 @@ erDiagram
     plugin ||--o{ plugin_relation : target
 
     plugin {
-        varchar_40 scope_id PK
-        char_36 id PK
+        varchar_40 scope_id PK,FK "current_revision 1/3"
+        char_36 id PK,FK "current_revision 2/3"
         varchar_160 name
         varchar_16 type
         varchar_16 status
-        int_unsigned current_revision_no FK
+        int_unsigned current_revision_no FK "current_revision 3/3"
         int_unsigned lock_version
         datetime_6 created_at
         datetime_6 updated_at

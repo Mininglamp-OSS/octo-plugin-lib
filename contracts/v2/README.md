@@ -4,10 +4,11 @@
 
 | 文件 | Schema ID | 用途 |
 | --- | --- | --- |
-| `cowork-plugin.schema.json` | `cowork-plugin-2.0.json` | 完整 Plugin |
-| `cowork-plugin-manifest.schema.json` | `cowork-plugin-manifest-2.0.json` | Manifest |
-| `cowork-plugin-package.schema.json` | `cowork-plugin-package-2.0.json` | 文件树和 Connector 描述 |
-| `cowork-plugin-relation.schema.json` | `cowork-plugin-relation-2.0.json` | 当前 Relation |
+| `cowork-plugin-2.0.json` | `cowork-plugin-2.0.json` | 完整 Plugin |
+| `cowork-plugin-manifest-2.0.json` | `cowork-plugin-manifest-2.0.json` | Manifest |
+| `cowork-plugin-package-2.0.json` | `cowork-plugin-package-2.0.json` | 文件树和 Connector 描述 |
+| `cowork-plugin-relation-2.0.json` | `cowork-plugin-relation-2.0.json` | 当前 Relation |
+| `cowork-plugin-revision-content-2.0.json` | `cowork-plugin-revision-content-2.0.json` | 不可变 Revision Content |
 | `errors.json` | — | 稳定校验错误码 |
 
 Plugin 的公共字段固定为 `plugin_id/plugin_name/plugin_type/manifest_json/plugin_json/`

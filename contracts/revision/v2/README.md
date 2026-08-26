@@ -14,5 +14,5 @@
 `plugin_hash` 使用与基础契约相同的 Canonical JSON 与 Attachment path 排序规则。
 Schema 负责结构，`contracts/v2/fixtures/semantic/invalid.json` 负责跨字段语义案例；Go
 调用方可直接使用 `plugin.DecodeRevisionContent` 完成严格解码、类型语义和 Hash 校验。
-独立加载本 Schema 时必须同时注册它引用的 Manifest 与 Package Schema。发布首个稳定
-版本后，同一 Schema ID 的内容不可变。
+机器 Schema 与其引用的 Manifest、Package Schema 同目录发布，标准 Draft 2020-12
+校验器可按相对引用直接加载。发布首个稳定版本后，同一 Schema ID 的内容不可变。

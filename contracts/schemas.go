@@ -6,15 +6,15 @@ import (
 	"fmt"
 )
 
-//go:embed v2/*.json v2/fixtures/*/*.json revision/v2/*.json revision/v2/fixtures/*/*.json
+//go:embed v2/*.json v2/fixtures/*/*.json revision/v2/fixtures/*/*.json
 var files embed.FS
 
 var schemaFiles = map[string]string{
-	"plugin":   "v2/cowork-plugin.schema.json",
-	"relation": "v2/cowork-plugin-relation.schema.json",
-	"manifest": "v2/cowork-plugin-manifest.schema.json",
-	"package":  "v2/cowork-plugin-package.schema.json",
-	"revision": "revision/v2/cowork-plugin-revision-content.schema.json",
+	"plugin":   "v2/cowork-plugin-2.0.json",
+	"relation": "v2/cowork-plugin-relation-2.0.json",
+	"manifest": "v2/cowork-plugin-manifest-2.0.json",
+	"package":  "v2/cowork-plugin-package-2.0.json",
+	"revision": "v2/cowork-plugin-revision-content-2.0.json",
 	"errors":   "v2/errors.json",
 }
 
