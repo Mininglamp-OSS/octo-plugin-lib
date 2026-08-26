@@ -3,7 +3,6 @@ CREATE TABLE IF NOT EXISTS plugin (
   scope_id VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   name VARCHAR(160) NOT NULL,
-  description LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   current_revision_no INT UNSIGNED NULL,

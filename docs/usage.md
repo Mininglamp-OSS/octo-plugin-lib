@@ -96,8 +96,9 @@ ARCHIVED Plugin 不接受普通 Update，即使提交内容与当前内容完全
 只能通过 Lib 写入。`Get/GetRevision` 重新校验 Canonical 字节、公共契约并用 `plugin_hash`
 检查完整 Revision 内容；检测到数据库内容漂移时返回 `pluginstore.ErrIntegrity`，宿主不能继续
 使用该内容。`List` 为避免读取每个 Plugin 的大文件树，只校验查询命中并返回行的 Manifest
-Canonical 形式及其与主表名称、描述、类型投影的一致性；投影损坏可能令按真实描述筛选漏掉
-该行。`ListRevisions` 只返回历史元数据，使用内容或 Hash 前调用 `GetRevision` 完整校验。
+Canonical 形式及其与主表名称、类型投影的一致性。`description` 只保留在 Manifest 中；
+`plugin` 表不保存该投影，`List` 的 Query 只搜索名称。`ListRevisions` 只返回历史元数据，
+使用内容或 Hash 前调用 `GetRevision` 完整校验。
 发现数据漂移时停止写入，由管理员从可信内容重建新库；不要为绕过最小权限修改的损坏数据
 增加在线猜测修复。运行时账号的最小权限仍是第一道防线。
 

@@ -135,12 +135,12 @@ fixtures 和 golden Hash；仓库的 <code>make verify</code> 使用 Python 标�
 <li>Revision 不可变由公开 API/Store 保证，不使用数据库 trigger；宿主数据库账号不得用原始 SQL 绕过。</li>
 <li>结构指纹已在 MySQL 8.0.46 和 8.4.10 验证。</li>
 <li>Get、List 和 ListRevisions 的普通调用使用 REPEATABLE READ 快照事务，但不声明 READ ONLY，避免数据库代理误路由到延迟副本；宿主连接必须满足读己之写。Get 的 Plugin、Revision、Relation 一致，两个列表的总数与当前页一致。WithTx 读取遵循宿主事务隔离级别。</li>
-<li><code>manifest_json/plugin_json</code> 使用 <code>utf8mb4_bin LONGTEXT</code> 精确保留 Canonical JSON；不用会重编码或拒绝部分公共数值的 MySQL JSON 解析器。<code>Get/GetRevision</code> 复核 Canonical 字节、公共契约和 <code>plugin_hash</code>，内容漂移时返回 <code>INTEGRITY_FAILURE</code>；<code>List</code> 不读取大文件树，只校验查询命中并返回行的 Manifest 及主表投影；<code>ListRevisions</code> 只返回元数据，使用内容或 Hash 前调用 <code>GetRevision</code>。</li>
-<li><code>plugin.description</code> 是当前 Manifest description 的事务性查询投影，只服务名称/描述搜索；Manifest 仍是权威真源，读取时校验一致。</li>
+<li><code>manifest_json/plugin_json</code> 使用 <code>utf8mb4_bin LONGTEXT</code> 精确保留 Canonical JSON；不用会重编码或拒绝部分公共数值的 MySQL JSON 解析器。<code>Get/GetRevision</code> 复核 Canonical 字节、公共契约和 <code>plugin_hash</code>，内容漂移时返回 <code>INTEGRITY_FAILURE</code>；<code>List</code> 不读取大文件树，只校验查询命中并返回行的 Manifest 及主表名称/类型投影；<code>ListRevisions</code> 只返回元数据，使用内容或 Hash 前调用 <code>GetRevision</code>。</li>
+<li><code>description</code> 只保留在 Manifest 中；<code>plugin</code> 表不保存冗余投影，List 的 Query 只搜索名称。</li>
 <li>生产环境分离迁移账号与最小权限运行时账号；调用方最低 Go 语言版本为 1.25，本仓库使用 Go 1.25.11 工具链验证。</li>
 <li>List 使用页码/offset；单次调用一致，但不提供跨请求快照。并发更新可能使项目换页，调用方应刷新。</li>
 </ul>
-<p>本库不执行推断式迁移或结构修补；部分三表结构不会被 Install 补全。若能证明这是首次安装中断且三表尚无业务数据，可删除三张不完整表后重新执行 Install；否则必须使用新空库，并从可信原始内容经当前 Lib 重新校验导入，不做可能损坏 Canonical 字节的原地列转换。若查询投影被越权改坏，按真实描述筛选可能漏行；发现漂移时停止写入并由管理员从可信来源重建，不提供在线猜测修复。</p>
+<p>本库不执行推断式迁移或结构修补；部分三表结构不会被 Install 补全。若能证明这是首次安装中断且三表尚无业务数据，可删除三张不完整表后重新执行 Install；否则必须使用新空库，并从可信原始内容经当前 Lib 重新校验导入，不做可能损坏 Canonical 字节的原地列转换。发现漂移时停止写入并由管理员从可信来源重建，不提供在线猜测修复。</p>
 </section>
 
 <section id="api"><h2>5. Go API</h2>

@@ -145,7 +145,7 @@ func TestCanonicalJSONTextRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := service.List(context.Background(), scope, pluginservice.ListFilter{Query: "canonical"})
+	page, err := service.List(context.Background(), scope, pluginservice.ListFilter{Query: "JSON Roundtrip"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,32 +167,6 @@ WHERE scope_id = ? AND plugin_id = ? AND revision_no = 1`, scope.ID, pluginID).S
 	}
 	if !bytes.Equal(stored, want.ManifestJSON) {
 		t.Fatalf("database changed Canonical JSON: got %s, want %s", stored, want.ManifestJSON)
-	}
-}
-
-func TestDescriptionProjectionDriftFailsClosed(t *testing.T) {
-	db := integrationDatabase(t, "OCTO_PLUGIN_LIB_MYSQL_DSN")
-	if err := Install(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
-	store, _ := New(db)
-	service, _ := pluginservice.New(store)
-	scope := pluginservice.Scope{ID: fmt.Sprintf("description-drift-%d", time.Now().UnixNano())}
-	const pluginID = "96000000-0000-4000-8000-000000000001"
-	if _, err := service.Create(context.Background(), scope, pluginservice.Actor{ID: "actor-test"}, pluginservice.CreateInput{
-		PluginID: pluginID, Content: rawSkill("Description Drift", "authoritative"),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`UPDATE plugin SET description = 'corrupt'
-WHERE scope_id = ? AND id = ?`, scope.ID, pluginID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.Get(context.Background(), scope, pluginID); !errors.Is(err, pluginstore.ErrIntegrity) {
-		t.Fatalf("Get projection drift error = %v", err)
-	}
-	if _, err := service.List(context.Background(), scope, pluginservice.ListFilter{}); !errors.Is(err, pluginstore.ErrIntegrity) {
-		t.Fatalf("List projection drift error = %v", err)
 	}
 }
 
@@ -364,8 +338,8 @@ func TestListExcludesIncompletePluginRows(t *testing.T) {
 	const pluginID = "a2000000-0000-4000-8000-000000000001"
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	if _, err := db.Exec(`INSERT INTO plugin
-(scope_id, id, name, description, type, status, current_revision_no, lock_version, created_at, updated_at)
-VALUES (?, ?, ?, '', ?, ?, NULL, 1, ?, ?)`, scope.ID, pluginID, "Incomplete Skill",
+(scope_id, id, name, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`, scope.ID, pluginID, "Incomplete Skill",
 		contract.TypeSkill, contract.StatusActive, now, now); err != nil {
 		t.Fatal(err)
 	}
@@ -871,8 +845,8 @@ func TestDatabaseChecksAreEnforced(t *testing.T) {
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	const insertPlugin = `INSERT INTO plugin
-(scope_id, id, name, description, type, status, current_revision_no, lock_version, created_at, updated_at)
-VALUES (?, ?, 'Invalid', '', 'skill', 'ACTIVE', NULL, 1, ?, ?)`
+(scope_id, id, name, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, 'Invalid', 'skill', 'ACTIVE', NULL, 1, ?, ?)`
 	assertCheckFailure("scope_id", insertPlugin,
 		"bad\nscope", "30000000-0000-4000-8000-000000000002", now, now)
 	assertCheckFailure("plugin_id", insertPlugin,

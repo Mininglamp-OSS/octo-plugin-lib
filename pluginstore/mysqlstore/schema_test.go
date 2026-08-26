@@ -38,7 +38,6 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 		"lock_version INT UNSIGNED", "chk_plugin_revision_plugin_hash", "chk_plugin_status",
 		"chk_plugin_scope_id", "chk_plugin_id", "chk_plugin_revision_actor",
 		"created_by VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL",
-		"description LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"manifest_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"plugin_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"PRIMARY KEY (scope_id, plugin_id, revision_no)",
@@ -49,6 +48,10 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 		if !strings.Contains(ddl, required) {
 			t.Errorf("schema is missing %q", required)
 		}
+	}
+	pluginTable := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS plugin \((.*?)\) ENGINE`).FindStringSubmatch(ddl)
+	if len(pluginTable) != 2 || strings.Contains(pluginTable[1], "description") {
+		t.Fatal("plugin table still contains removed description projection")
 	}
 	if strings.Contains(ddl, "JSON_VALID") {
 		t.Fatal("schema delegates the public JSON numeric domain to MySQL")

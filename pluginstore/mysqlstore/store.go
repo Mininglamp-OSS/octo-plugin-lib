@@ -122,11 +122,11 @@ func list(ctx context.Context, db database, scopeID string, filter pluginstore.L
 	}
 	arguments = append(arguments, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := db.QueryContext(ctx, `
-SELECT p.id, p.name, p.description, p.type, p.status, p.current_revision_no,
+SELECT p.id, p.name, p.type, p.status, p.current_revision_no,
        p.lock_version, p.created_at, p.updated_at,
        r.manifest_json, r.plugin_hash
 FROM (
-  SELECT p.scope_id, p.id, p.name, p.description, p.type, p.status,
+  SELECT p.scope_id, p.id, p.name, p.type, p.status,
          p.current_revision_no, p.lock_version, p.created_at, p.updated_at
   `+from+` `+where+`
   ORDER BY p.updated_at DESC, p.id DESC
@@ -143,13 +143,12 @@ ORDER BY p.updated_at DESC, p.id DESC`, arguments...)
 	items := make([]pluginstore.PluginSummary, 0, filter.PageSize)
 	for rows.Next() {
 		var item pluginstore.PluginSummary
-		var description string
-		if err := rows.Scan(&item.PluginID, &item.PluginName, &description, &item.PluginType, &item.Status,
+		if err := rows.Scan(&item.PluginID, &item.PluginName, &item.PluginType, &item.Status,
 			&item.CurrentRevisionNo, &item.LockVersion, &item.CreatedAt, &item.UpdatedAt,
 			&item.ManifestJSON, &item.PluginHash); err != nil {
 			return pluginstore.PluginPage{}, storageError("scan Plugin list", err)
 		}
-		if err := validateStoredManifest(item.ManifestJSON, item.PluginName, description, item.PluginType); err != nil {
+		if err := validateStoredManifest(item.ManifestJSON, item.PluginName, item.PluginType); err != nil {
 			return pluginstore.PluginPage{}, err
 		}
 		items = append(items, item)
@@ -299,7 +298,7 @@ func create(ctx context.Context, tx *sql.Tx, record pluginstore.CreateRecord) (p
 	if err := validateRelations(record.Plugin.PluginType, record.Plugin.Status, nil, record.Relations, locked); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
-	if err := insertPlugin(ctx, tx, record.Plugin, record.Revision.ManifestJSON); err != nil {
+	if err := insertPlugin(ctx, tx, record.Plugin); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
 	if err := insertRevision(ctx, tx, record.Revision); err != nil {
@@ -347,7 +346,7 @@ func createGraph(ctx context.Context, tx *sql.Tx, records []pluginstore.CreateRe
 		}
 	}
 	for _, record := range ordered {
-		if err := insertPlugin(ctx, tx, record.Plugin, record.Revision.ManifestJSON); err != nil {
+		if err := insertPlugin(ctx, tx, record.Plugin); err != nil {
 			return nil, err
 		}
 	}
@@ -411,17 +410,13 @@ func updateContent(ctx context.Context, tx *sql.Tx, record pluginstore.ContentUp
 	record.Revision.PluginID = record.PluginID
 	record.Revision.PluginType = record.PluginType
 	record.Revision.RevisionNo = current.Plugin.CurrentRevisionNo + 1
-	description, err := manifestDescription(record.Revision.ManifestJSON)
-	if err != nil {
-		return pluginstore.Snapshot{}, err
-	}
 	if err := insertRevision(ctx, tx, record.Revision); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE plugin
-SET name = ?, description = ?, current_revision_no = ?, lock_version = lock_version + 1, updated_at = ?
+SET name = ?, current_revision_no = ?, lock_version = lock_version + 1, updated_at = ?
 WHERE scope_id = ? AND id = ? AND lock_version = ?`,
-		record.PluginName, description, record.Revision.RevisionNo, record.UpdatedAt,
+		record.PluginName, record.Revision.RevisionNo, record.UpdatedAt,
 		record.ScopeID, record.PluginID, record.ExpectedLockVersion)
 	if err != nil {
 		return pluginstore.Snapshot{}, mapWriteError("update Plugin content", err)
@@ -518,15 +513,11 @@ WHERE scope_id = ? AND id = ? AND lock_version = ?`,
 	return getForUpdate(ctx, tx, record.ScopeID, record.PluginID)
 }
 
-func insertPlugin(ctx context.Context, tx *sql.Tx, item pluginstore.Plugin, manifestJSON []byte) error {
-	description, err := manifestDescription(manifestJSON)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO plugin
-(scope_id, id, name, description, type, status, current_revision_no, lock_version, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`, item.ScopeID, item.PluginID, item.PluginName,
-		description, item.PluginType, item.Status, item.LockVersion, item.CreatedAt, item.UpdatedAt)
+func insertPlugin(ctx context.Context, tx *sql.Tx, item pluginstore.Plugin) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO plugin
+(scope_id, id, name, type, status, current_revision_no, lock_version, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`, item.ScopeID, item.PluginID, item.PluginName,
+		item.PluginType, item.Status, item.LockVersion, item.CreatedAt, item.UpdatedAt)
 	if err != nil {
 		return mapWriteError("insert Plugin", err)
 	}
@@ -578,7 +569,7 @@ func getForUpdate(ctx context.Context, tx *sql.Tx, scopeID, pluginID string) (pl
 func getSnapshot(ctx context.Context, db database, scopeID, pluginID string, forUpdate bool) (pluginstore.Snapshot, error) {
 	var result pluginstore.Snapshot
 	query := `
-SELECT p.scope_id, p.id, p.name, p.description, p.type, p.status,
+SELECT p.scope_id, p.id, p.name, p.type, p.status,
        p.current_revision_no, p.lock_version, p.created_at, p.updated_at,
        r.revision_no, r.manifest_json, r.plugin_json, r.plugin_hash, r.created_by, r.created_at
 FROM plugin p
@@ -590,9 +581,8 @@ WHERE p.scope_id = ? AND p.id = ?`
 		query += " FOR UPDATE"
 	}
 	row := db.QueryRowContext(ctx, query, scopeID, pluginID)
-	var description string
 	if err := row.Scan(&result.Plugin.ScopeID, &result.Plugin.PluginID, &result.Plugin.PluginName,
-		&description, &result.Plugin.PluginType, &result.Plugin.Status, &result.Plugin.CurrentRevisionNo,
+		&result.Plugin.PluginType, &result.Plugin.Status, &result.Plugin.CurrentRevisionNo,
 		&result.Plugin.LockVersion, &result.Plugin.CreatedAt, &result.Plugin.UpdatedAt,
 		&result.Revision.RevisionNo, &result.Revision.ManifestJSON, &result.Revision.PluginJSON,
 		&result.Revision.PluginHash, &result.Revision.CreatedBy, &result.Revision.CreatedAt); err != nil {
@@ -608,7 +598,7 @@ WHERE p.scope_id = ? AND p.id = ?`
 		return pluginstore.Snapshot{}, err
 	}
 	if err := validateStoredManifest(result.Revision.ManifestJSON,
-		result.Plugin.PluginName, description, result.Plugin.PluginType); err != nil {
+		result.Plugin.PluginName, result.Plugin.PluginType); err != nil {
 		return pluginstore.Snapshot{}, err
 	}
 	relations, err := loadRelations(ctx, db, result.Plugin.ScopeID, result.Plugin.PluginID, forUpdate)
@@ -654,25 +644,16 @@ func validateStoredRevision(revision pluginstore.Revision) error {
 	return nil
 }
 
-func validateStoredManifest(raw []byte, pluginName, description string, pluginType contract.Type) error {
+func validateStoredManifest(raw []byte, pluginName string, pluginType contract.Type) error {
 	normalized, err := contract.CanonicalJSON(raw)
 	if err != nil || !bytes.Equal(normalized, raw) {
 		return fmt.Errorf("%w: stored Manifest is invalid or non-canonical", pluginstore.ErrIntegrity)
 	}
 	manifest, err := contract.DecodeManifest(normalized)
-	if err != nil || manifest.PluginName != pluginName || manifest.Description != description ||
-		manifest.PluginType != pluginType {
+	if err != nil || manifest.PluginName != pluginName || manifest.PluginType != pluginType {
 		return fmt.Errorf("%w: stored Manifest does not match Plugin", pluginstore.ErrIntegrity)
 	}
 	return nil
-}
-
-func manifestDescription(raw []byte) (string, error) {
-	manifest, err := contract.DecodeManifest(raw)
-	if err != nil {
-		return "", fmt.Errorf("%w: Manifest is invalid", pluginstore.ErrInvalidArgument)
-	}
-	return manifest.Description, nil
 }
 
 func loadRelationsForUpdate(ctx context.Context, tx *sql.Tx, scopeID, pluginID string) ([]pluginstore.Relation, error) {
@@ -911,9 +892,8 @@ func listWhere(scopeID string, filter pluginstore.ListFilter) (string, []any) {
 	}
 	if filter.Query != "" {
 		pattern := "%" + escapeLike(filter.Query) + "%"
-		where += ` AND (p.name LIKE ? ESCAPE '=' OR
-  p.description COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '=')`
-		arguments = append(arguments, pattern, pattern)
+		where += " AND p.name LIKE ? ESCAPE '='"
+		arguments = append(arguments, pattern)
 	}
 	return where, arguments
 }
