@@ -60,6 +60,18 @@ func TestNormalizeRevisionContentCanonicalizesAndHashes(t *testing.T) {
 	}
 }
 
+func TestNormalizeRevisionContentPreservesInputErrorIndex(t *testing.T) {
+	_, err := plugin.NormalizeRevisionContent(plugin.RevisionContent{
+		PluginType:   plugin.TypeSkill,
+		ManifestJSON: json.RawMessage(`{"$schema":"cowork-plugin-manifest-2.0.json","plugin_name":"Skill","plugin_type":"skill","name":"Skill","description":""}`),
+		PluginJSON:   json.RawMessage(`{"$schema":"cowork-plugin-package-2.0.json","attachments":[{"path":"SKILL.md","content_type":"raw","mime_type":"text/markdown","raw_content":"# Skill"},{"path":"A.txt","content_type":"raw","mime_type":"text/plain"}]}`),
+	})
+	var validationError *plugin.ValidationError
+	if !errors.As(err, &validationError) || validationError.Path != "plugin_json.attachments[1]" {
+		t.Fatalf("NormalizeRevisionContent() error = %v", err)
+	}
+}
+
 func TestRevisionValidationRejectsHashMismatch(t *testing.T) {
 	item := readRevisionFixture(t, "valid/skill-revision.json")
 	item.PluginHash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

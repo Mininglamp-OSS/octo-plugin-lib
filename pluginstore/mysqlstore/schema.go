@@ -4,14 +4,13 @@ package mysqlstore
 import (
 	"context"
 	"database/sql"
+	sqldriver "database/sql/driver"
 	_ "embed"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
-
-	driver "github.com/go-sql-driver/mysql"
 )
 
 //go:embed schema.sql
@@ -44,23 +43,62 @@ func Install(ctx context.Context, db *sql.DB) (err error) {
 		return fmt.Errorf("mysqlstore: acquire install lock: %w", err)
 	}
 	defer func() {
-		var released int
-		releaseErr := connection.QueryRowContext(context.Background(), "SELECT RELEASE_LOCK(?)", lockName).Scan(&released)
-		if err == nil && releaseErr != nil {
-			err = fmt.Errorf("mysqlstore: release install lock: %w", releaseErr)
+		cleanupContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), transactionCleanupTimeout)
+		defer cancel()
+		var released sql.NullInt64
+		releaseErr := connection.QueryRowContext(cleanupContext, "SELECT RELEASE_LOCK(?)", lockName).Scan(&released)
+		if releaseErr == nil && (!released.Valid || released.Int64 != 1) {
+			releaseErr = fmt.Errorf("lock was not owned")
+		}
+		if releaseErr != nil {
+			_ = connection.Raw(func(any) error { return sqldriver.ErrBadConn })
+			err = errors.Join(err, fmt.Errorf("mysqlstore: release install lock: %w", releaseErr))
 		}
 	}()
+
+	installed, err := ownedTablesInstalled(ctx, connection)
+	if err != nil {
+		return err
+	}
+	if installed {
+		return VerifySchema(ctx, connection)
+	}
 
 	for _, statement := range strings.Split(schemaSQL, "-- statement") {
 		statement = strings.TrimSpace(statement)
 		if statement == "" {
 			continue
 		}
-		if _, executeErr := connection.ExecContext(ctx, statement); executeErr != nil && !duplicateConstraint(executeErr) {
+		if _, executeErr := connection.ExecContext(ctx, statement); executeErr != nil {
 			return fmt.Errorf("mysqlstore: install schema: %w", executeErr)
 		}
 	}
 	return VerifySchema(ctx, connection)
+}
+
+func ownedTablesInstalled(ctx context.Context, db interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (bool, error) {
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*)
+FROM information_schema.tables
+WHERE table_schema = DATABASE()
+  AND table_type = 'BASE TABLE'
+  AND table_name IN ('plugin', 'plugin_revision', 'plugin_relation')`).Scan(&count); err != nil {
+		return false, fmt.Errorf("mysqlstore: inspect existing Plugin tables: %w", err)
+	}
+	return classifyOwnedTableCount(count)
+}
+
+func classifyOwnedTableCount(count int) (bool, error) {
+	switch count {
+	case 0:
+		return false, nil
+	case 3:
+		return true, nil
+	default:
+		return false, fmt.Errorf("mysqlstore: Plugin schema is incomplete: found %d of 3 owned tables", count)
+	}
 }
 
 type queryer interface {
@@ -135,11 +173,6 @@ func setDifference(left, right map[string]struct{}) []string {
 	return result
 }
 
-func duplicateConstraint(err error) bool {
-	var mysqlError *driver.MySQLError
-	return errors.As(err, &mysqlError) && mysqlError.Number == 1826
-}
-
 // Filled from information_schema and guarded by schema tests. Keeping one
 // stable fingerprint is smaller and less error-prone than a parallel DDL AST.
 const expectedSchemaFingerprint = `C|plugin_relation|001|scope_id|varchar(40)|NO|<NULL>||ascii|ascii_bin
@@ -152,18 +185,17 @@ C|plugin_revision|003|revision_no|int unsigned|NO|<NULL>|||
 C|plugin_revision|004|manifest_json|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
 C|plugin_revision|005|plugin_json|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
 C|plugin_revision|006|plugin_hash|char(71)|NO|<NULL>||ascii|ascii_bin
-C|plugin_revision|007|created_by|varchar(191)|NO|<NULL>||utf8mb4|utf8mb4_0900_ai_ci
+C|plugin_revision|007|created_by|varchar(191)|NO|<NULL>||ascii|ascii_bin
 C|plugin_revision|008|created_at|datetime(6)|NO|<NULL>|||
 C|plugin|001|scope_id|varchar(40)|NO|<NULL>||ascii|ascii_bin
 C|plugin|002|id|char(36)|NO|<NULL>||ascii|ascii_bin
 C|plugin|003|name|varchar(160)|NO|<NULL>||utf8mb4|utf8mb4_0900_ai_ci
-C|plugin|004|description|longtext|NO|<NULL>||utf8mb4|utf8mb4_bin
-C|plugin|005|type|varchar(16)|NO|<NULL>||ascii|ascii_bin
-C|plugin|006|status|varchar(16)|NO|<NULL>||ascii|ascii_bin
-C|plugin|007|current_revision_no|int unsigned|YES|<NULL>|||
-C|plugin|008|lock_version|int unsigned|NO|<NULL>|||
-C|plugin|009|created_at|datetime(6)|NO|<NULL>|||
-C|plugin|010|updated_at|datetime(6)|NO|<NULL>|||
+C|plugin|004|type|varchar(16)|NO|<NULL>||ascii|ascii_bin
+C|plugin|005|status|varchar(16)|NO|<NULL>||ascii|ascii_bin
+C|plugin|006|current_revision_no|int unsigned|YES|<NULL>|||
+C|plugin|007|lock_version|int unsigned|NO|<NULL>|||
+C|plugin|008|created_at|datetime(6)|NO|<NULL>|||
+C|plugin|009|updated_at|datetime(6)|NO|<NULL>|||
 F|plugin_relation|fk_plugin_relation_source|001|scope_id|plugin|scope_id|NO ACTION|CASCADE
 F|plugin_relation|fk_plugin_relation_source|002|source_plugin_id|plugin|id|NO ACTION|CASCADE
 F|plugin_relation|fk_plugin_relation_target|001|scope_id|plugin|scope_id|NO ACTION|RESTRICT
@@ -173,10 +205,13 @@ F|plugin_revision|fk_plugin_revision_plugin|002|plugin_id|plugin|id|NO ACTION|RE
 F|plugin|fk_plugin_current_revision|001|scope_id|plugin_revision|scope_id|NO ACTION|RESTRICT
 F|plugin|fk_plugin_current_revision|002|id|plugin_revision|plugin_id|NO ACTION|RESTRICT
 F|plugin|fk_plugin_current_revision|003|current_revision_no|plugin_revision|revision_no|NO ACTION|RESTRICT
-H|plugin_relation|chk_plugin_relation_type|(relation_type in (_utf8mb4\'expert_team_expert\',_utf8mb4\'expert_skill\',_utf8mb4\'expert_connector\'))
+H|plugin_relation|chk_plugin_relation_type|(relation_type in (_ascii\'expert_team_expert\',_ascii\'expert_skill\',_ascii\'expert_connector\'))
+H|plugin_revision|chk_plugin_revision_actor|((created_by <> _ascii\'\') and (not(regexp_like(created_by,_ascii\'[^A-Za-z0-9._:-]\',_ascii\'c\'))))
 H|plugin_revision|chk_plugin_revision_no|(revision_no > 0)
-H|plugin_revision|chk_plugin_revision_plugin_hash|regexp_like(plugin_hash,_utf8mb4\'^sha256:[0-9a-f]{64}$\',_utf8mb4\'c\')
+H|plugin_revision|chk_plugin_revision_plugin_hash|regexp_like(plugin_hash,_ascii\'^sha256:[0-9a-f]{64}$\',_ascii\'c\')
+H|plugin|chk_plugin_id|regexp_like(id,_ascii\'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\',_ascii\'c\')
 H|plugin|chk_plugin_lock|(lock_version > 0)
+H|plugin|chk_plugin_scope_id|((scope_id <> _ascii\'\') and (not(regexp_like(scope_id,_ascii\'[^A-Za-z0-9._:-]\',_ascii\'c\'))))
 H|plugin|chk_plugin_status|(status in (_ascii\'ACTIVE\',_ascii\'ARCHIVED\'))
 H|plugin|chk_plugin_time|(updated_at >= created_at)
 H|plugin|chk_plugin_type|(type in (_ascii\'expert\',_ascii\'expert_team\',_ascii\'skill\',_ascii\'connector\'))
@@ -202,11 +237,14 @@ K|plugin_relation|chk_plugin_relation_type|CHECK|YES
 K|plugin_relation|fk_plugin_relation_source|FOREIGN KEY|YES
 K|plugin_relation|fk_plugin_relation_target|FOREIGN KEY|YES
 K|plugin_revision|PRIMARY|PRIMARY KEY|YES
+K|plugin_revision|chk_plugin_revision_actor|CHECK|YES
 K|plugin_revision|chk_plugin_revision_no|CHECK|YES
 K|plugin_revision|chk_plugin_revision_plugin_hash|CHECK|YES
 K|plugin_revision|fk_plugin_revision_plugin|FOREIGN KEY|YES
 K|plugin|PRIMARY|PRIMARY KEY|YES
+K|plugin|chk_plugin_id|CHECK|YES
 K|plugin|chk_plugin_lock|CHECK|YES
+K|plugin|chk_plugin_scope_id|CHECK|YES
 K|plugin|chk_plugin_status|CHECK|YES
 K|plugin|chk_plugin_time|CHECK|YES
 K|plugin|chk_plugin_type|CHECK|YES

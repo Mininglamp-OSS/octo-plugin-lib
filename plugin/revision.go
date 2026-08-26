@@ -29,9 +29,9 @@ func DecodeRevisionContent(raw json.RawMessage) (RevisionContent, error) {
 	return item, nil
 }
 
-// ValidateRevisionContent validates normalized immutable content without
-// modifying the caller's value. Relation target existence, type, tenancy, and
-// concrete target Revision are host responsibilities.
+// ValidateRevisionContent validates immutable content without modifying the
+// caller's value. Relations, authorization, and attachment bytes remain host
+// responsibilities.
 func ValidateRevisionContent(item RevisionContent) error {
 	if !item.PluginType.Valid() {
 		return invalid(CodeInvalidPluginType, "plugin_type", "must be expert, skill, expert_team, or connector")
@@ -62,8 +62,19 @@ func NormalizeRevisionContent(item RevisionContent) (RevisionContent, error) {
 	if err != nil {
 		return RevisionContent{}, withPath(err, "manifest_json")
 	}
+	manifestValue, err := DecodeManifest(manifest)
+	if err != nil {
+		return RevisionContent{}, err
+	}
+	if manifestValue.PluginType != item.PluginType {
+		return RevisionContent{}, invalid(CodeInvalidField, "manifest_json.plugin_type", "must match plugin_type")
+	}
 	packageJSON := []byte("null")
 	if !isJSONNull(item.PluginJSON) {
+		// Validate before sorting so an error path refers to the caller's input.
+		if _, err := DecodePackage(item.PluginType, item.PluginJSON); err != nil {
+			return RevisionContent{}, err
+		}
 		packageJSON, err = canonicalPackageJSON(item.PluginJSON)
 		if err != nil {
 			return RevisionContent{}, withPath(err, "plugin_json")
@@ -71,9 +82,6 @@ func NormalizeRevisionContent(item RevisionContent) (RevisionContent, error) {
 	}
 	item.ManifestJSON = manifest
 	item.PluginJSON = packageJSON
-	if err := validateRevisionDocuments(item.PluginType, manifest, packageJSON); err != nil {
-		return RevisionContent{}, err
-	}
 	item.PluginHash = computePluginHashCanonical(manifest, packageJSON)
 	return item, nil
 }

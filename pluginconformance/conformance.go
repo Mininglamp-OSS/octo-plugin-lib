@@ -193,8 +193,8 @@ func Run(t *testing.T, api API) {
 		want  int64
 	}{
 		{"%_", 1},
-		{"literal search", 1},
-		{"historical-description-only", 1},
+		{"literal search", 0},
+		{"historical-description-only", 0},
 		{"current-description-original", 0},
 		{"not-present-anywhere", 0},
 	} {

@@ -37,7 +37,10 @@ make verify
 make test-mysql
 ```
 
+`make verify` 还会用 Python 标准库独立复算 Canonical JSON 边界和 golden Hash，避免只有
+Go 实现自证一致；这不会为生产库增加 Python 依赖。
+
 Canonical JSON 是本项目定义的稳定编码，不等同于 RFC 8785/JCS；跨语言实现必须以
 `contracts/v2/fixtures/golden` 的 golden 数据为准。对象键按 Unicode scalar 顺序排列，
 字符串使用 Go `encoding/json` 转义规则，JSON 最多嵌套 512 层。文档和附件总量由各宿主
-入口按自身产品边界限制。发布首个稳定版本后，同一 Schema ID 的内容不可变。
+入口按自身产品边界限制。已发布的同一 Schema ID 内容不可变。

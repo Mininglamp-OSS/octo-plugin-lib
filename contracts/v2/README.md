@@ -57,5 +57,7 @@ Hash 分叉。
 
 跨语言实现必须先执行 JSON Schema，再执行 `fixtures/semantic/invalid.json` 中按
 `validator` 标注的语义校验，并通过 golden Hash；仅通过 Schema 不代表契约完整。
+仓库根目录的 `make test-cross-language` 使用 Python 标准库独立复算 Canonical JSON
+边界和 golden Hash，不依赖 Go 实现。
 
-发布首个稳定版本后，同一 Schema ID 的内容不可变。
+已发布的同一 Schema ID 内容不可变。

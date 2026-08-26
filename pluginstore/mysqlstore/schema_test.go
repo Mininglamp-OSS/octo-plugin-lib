@@ -36,7 +36,8 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 	for _, required := range []string{
 		"scope_id VARCHAR(40)", "status VARCHAR(16)", "current_revision_no INT UNSIGNED",
 		"lock_version INT UNSIGNED", "chk_plugin_revision_plugin_hash", "chk_plugin_status",
-		"description LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
+		"chk_plugin_scope_id", "chk_plugin_id", "chk_plugin_revision_actor",
+		"created_by VARCHAR(191) CHARACTER SET ascii COLLATE ascii_bin NOT NULL",
 		"manifest_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"plugin_json LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
 		"PRIMARY KEY (scope_id, plugin_id, revision_no)",
@@ -47,6 +48,10 @@ func TestSchemaMatchesTheSharedThreeTableModel(t *testing.T) {
 		if !strings.Contains(ddl, required) {
 			t.Errorf("schema is missing %q", required)
 		}
+	}
+	pluginTable := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS plugin \((.*?)\) ENGINE`).FindStringSubmatch(ddl)
+	if len(pluginTable) != 2 || strings.Contains(pluginTable[1], "description") {
+		t.Fatal("plugin table still contains removed description projection")
 	}
 	if strings.Contains(ddl, "JSON_VALID") {
 		t.Fatal("schema delegates the public JSON numeric domain to MySQL")
@@ -87,6 +92,20 @@ func TestRetryableMySQLErrorsAreConflicts(t *testing.T) {
 		err := mapWriteError("update", &driver.MySQLError{Number: number})
 		if !errors.Is(err, pluginstore.ErrConflict) {
 			t.Errorf("MySQL error %d mapped to %v", number, err)
+		}
+	}
+}
+
+func TestOwnedTableCountPolicy(t *testing.T) {
+	for count, wantInstalled := range map[int]bool{0: false, 3: true} {
+		installed, err := classifyOwnedTableCount(count)
+		if err != nil || installed != wantInstalled {
+			t.Fatalf("classifyOwnedTableCount(%d) = %t, %v", count, installed, err)
+		}
+	}
+	for _, count := range []int{1, 2} {
+		if _, err := classifyOwnedTableCount(count); err == nil {
+			t.Fatalf("classifyOwnedTableCount(%d) accepted an incomplete schema", count)
 		}
 	}
 }

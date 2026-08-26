@@ -3,10 +3,27 @@ package mysqlstore
 import (
 	"errors"
 	"testing"
+	"time"
 
 	contract "github.com/Mininglamp-OSS/octo-plugin-lib/plugin"
 	"github.com/Mininglamp-OSS/octo-plugin-lib/pluginstore"
 )
+
+func TestStoreIdentifierValidationPreservesContractDetails(t *testing.T) {
+	for name, err := range map[string]error{
+		"scope":  validateStoreIdentity("bad scope", "10000000-0000-4000-8000-000000000001"),
+		"plugin": validateStoreIdentity("scope-1", "NOT-A-UUID"),
+		"actor": validateRevisionRecord(pluginstore.Revision{
+			ScopeID: "scope-1", PluginID: "10000000-0000-4000-8000-000000000001",
+			CreatedBy: "bad actor", CreatedAt: time.Now().UTC(),
+		}),
+	} {
+		var violation *contract.ValidationError
+		if !errors.Is(err, pluginstore.ErrInvalidArgument) || !errors.As(err, &violation) {
+			t.Errorf("%s error = %v, want invalid argument with contract details", name, err)
+		}
+	}
+}
 
 func TestNewRelationRequiresActiveSourceAndTarget(t *testing.T) {
 	relation := pluginstore.Relation{
@@ -33,5 +50,23 @@ func TestNewRelationRequiresActiveSourceAndTarget(t *testing.T) {
 	}
 	if err := validateRelations(contract.TypeExpert, contract.StatusActive, []pluginstore.Relation{relation}, []pluginstore.Relation{relation}, archivedTarget); err != nil {
 		t.Fatalf("retained historical relation rejected: %v", err)
+	}
+}
+
+func TestRelationTypeValidationPreservesContractDetails(t *testing.T) {
+	relation := pluginstore.Relation{
+		SourcePluginID: "10000000-0000-4000-8000-000000000001",
+		RelationType:   contract.RelationExpertSkill,
+		TargetPluginID: "20000000-0000-4000-8000-000000000002",
+	}
+	err := validateRelations(contract.TypeExpert, contract.StatusActive, nil, []pluginstore.Relation{relation}, map[string]lockedPlugin{
+		relation.TargetPluginID: {pluginType: contract.TypeExpert, status: contract.StatusActive},
+	})
+	var violation *contract.ValidationError
+	if !errors.Is(err, pluginstore.ErrInvalidArgument) || !errors.As(err, &violation) {
+		t.Fatalf("error = %v, want invalid argument with contract details", err)
+	}
+	if violation.Code != contract.CodeInvalidRelation || violation.Path != "relation_type" {
+		t.Fatalf("validation error = %#v", violation)
 	}
 }

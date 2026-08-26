@@ -86,6 +86,21 @@ func TestStatusAndScopeValidation(t *testing.T) {
 	if _, err := service.List(context.Background(), Scope{ID: "scope-test"}, ListFilter{Status: &invalidStatus}); !errors.Is(err, pluginstore.ErrInvalidArgument) {
 		t.Fatalf("List invalid status error = %v", err)
 	}
+	for name, test := range map[string]struct {
+		scope Scope
+		actor Actor
+	}{
+		"scope newline": {scope: Scope{ID: "bad\nscope"}, actor: Actor{ID: "actor-test"}},
+		"actor newline": {scope: Scope{ID: "scope-test"}, actor: Actor{ID: "bad\nactor"}},
+		"actor unicode": {scope: Scope{ID: "scope-test"}, actor: Actor{ID: "用户"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := service.Create(context.Background(), test.scope, test.actor, CreateInput{PluginID: testPluginID})
+			if !errors.Is(err, pluginstore.ErrInvalidArgument) {
+				t.Fatalf("Create identifier error = %v", err)
+			}
+		})
+	}
 }
 
 func TestServicePreservesContractValidationError(t *testing.T) {

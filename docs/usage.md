@@ -21,15 +21,24 @@ if err != nil { return err }
 plugins, err := pluginservice.New(store)
 ```
 
-`Install` 只适用于新空 schema 或已精确匹配的三表结构；`VerifySchema` 会拒绝列、约束、
-索引或表漂移。旧 MySQL JSON 列不能直接 `ALTER` 为 LONGTEXT，因为数据库已经重编码的字节
-无法恢复为原 Canonical JSON；旧实验库必须从可信原始内容通过当前 Lib 重新校验并导入新空库。
+`Install` 只适用于新空 schema 或已精确匹配的三表结构：三张自有表全无时才安装，三表齐全
+时只校验；只存在 1～2 张表，或三表已建但最终外键尚未完成时，都会直接失败，不猜测性
+补表或补约束。若确认这是首次安装中断且三表尚无业务数据，删除这三张不完整表后重新执行
+`Install`；不能证明为空时使用新空库并从可信内容重建。`VerifySchema` 会拒绝列、
+约束、索引或表漂移。安装过程由数据库级 advisory lock 串行化，锁释放使用独立 5 秒清理
+超时并校验释放结果；释放失败时连接会被丢弃，不能带锁回到连接池。不兼容结构必须使用
+新空库，并从可信原始内容通过当前 Lib 重新校验导入；不得用原地列转换冒充安全迁移。
 生产环境可用迁移账号执行 `Install/VerifySchema`，再把运行时连接交给 `New`。运行时账号
 只需 Plugin 表的 SELECT/INSERT/UPDATE、Revision 表的 SELECT/INSERT，以及 Relation 表的
 SELECT/INSERT/DELETE；不应拥有 Revision UPDATE/DELETE、Plugin DELETE 或 DDL 权限。
+`scope_id` 和 `created_by` 只接受非空 ASCII 标识符（字母、数字、点、下划线、冒号、
+连字符），Plugin ID 只接受小写 UUID 文本形状；Contract、Service、Store 与 MySQL CHECK
+使用同一规则。
 
 真实 MySQL 门禁使用 `make test-mysql`；它要求同时提供
 `OCTO_PLUGIN_LIB_MYSQL_DSN` 与 `OCTO_PLUGIN_LIB_MYSQL_DRIFT_DSN`，缺失时失败而不是跳过。
+`make verify` 还会通过 Python 标准库独立执行 Canonical JSON 与 golden Hash
+跨语言门禁；它不是生产运行时依赖。
 
 ## 创建与修改
 
@@ -87,8 +96,9 @@ ARCHIVED Plugin 不接受普通 Update，即使提交内容与当前内容完全
 只能通过 Lib 写入。`Get/GetRevision` 重新校验 Canonical 字节、公共契约并用 `plugin_hash`
 检查完整 Revision 内容；检测到数据库内容漂移时返回 `pluginstore.ErrIntegrity`，宿主不能继续
 使用该内容。`List` 为避免读取每个 Plugin 的大文件树，只校验查询命中并返回行的 Manifest
-Canonical 形式及其与主表名称、描述、类型投影的一致性；投影损坏可能令按真实描述筛选漏掉
-该行。`ListRevisions` 只返回历史元数据，使用内容或 Hash 前调用 `GetRevision` 完整校验。
+Canonical 形式及其与主表名称、类型投影的一致性。`description` 只保留在 Manifest 中；
+`plugin` 表不保存该投影，`List` 的 Query 只搜索名称。`ListRevisions` 只返回历史元数据，
+使用内容或 Hash 前调用 `GetRevision` 完整校验。
 发现数据漂移时停止写入，由管理员从可信内容重建新库；不要为绕过最小权限修改的损坏数据
 增加在线猜测修复。运行时账号的最小权限仍是第一道防线。
 
@@ -114,7 +124,8 @@ return tx.Commit()
 每次绑定事务的 Lib 写调用都有独立 SAVEPOINT。调用失败不会留下半个 Plugin/依赖图；若
 SAVEPOINT 无法恢复或 MySQL 已因死锁终止整个事务，错误匹配
 `pluginstore.ErrTransactionAborted`，且 `pluginstore.Code` 返回 `INTERNAL`；宿主不得继续
-使用该事务。
+使用该事务。传入 `WithTx` 的事务必须来自初始化 Store 的同一 database/schema 连接池；
+`database/sql` 不提供可靠的事务归属反射能力，Lib 无法替宿主自动判断。
 
 ## Attachment
 

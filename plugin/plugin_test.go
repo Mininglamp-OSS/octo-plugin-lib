@@ -300,6 +300,9 @@ func TestCanonicalJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
 	}
+	if len(fixture.Cases) == 0 || len(fixture.InvalidInputs) == 0 {
+		t.Fatal("Canonical JSON fixture cases must not be empty")
+	}
 	for _, test := range fixture.Cases {
 		t.Run(test.Name, func(t *testing.T) {
 			got, err := plugin.CanonicalJSON([]byte(test.Input))
@@ -398,6 +401,9 @@ func TestGoldenHash(t *testing.T) {
 	}
 	if err := json.Unmarshal(data, &fixture); err != nil {
 		t.Fatal(err)
+	}
+	if len(fixture.Cases) == 0 {
+		t.Fatal("Plugin hash fixture cases must not be empty")
 	}
 	for _, test := range fixture.Cases {
 		t.Run(test.Name, func(t *testing.T) {
@@ -779,7 +785,7 @@ func TestDocumentationMatchesContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(data), "发布首个稳定版本后，同一 Schema ID 的内容不可变") {
+		if !strings.Contains(string(data), "已发布的同一 Schema ID 内容不可变") {
 			t.Errorf("%s does not document Schema ID immutability", filename)
 		}
 	}

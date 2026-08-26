@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	contract "github.com/Mininglamp-OSS/octo-plugin-lib/plugin"
@@ -387,13 +386,8 @@ func validatePluginAndLock(pluginID string, lockVersion uint32) error {
 }
 
 func validateIdentifier(field, value string, maximum int) error {
-	if value == "" || len(value) > maximum || strings.TrimSpace(value) != value {
-		return fmt.Errorf("%w: %s is invalid", pluginstore.ErrInvalidArgument, field)
-	}
-	for _, character := range value {
-		if character > unicode.MaxASCII || !(unicode.IsLetter(character) || unicode.IsDigit(character) || strings.ContainsRune("._:-", character)) {
-			return fmt.Errorf("%w: %s is invalid", pluginstore.ErrInvalidArgument, field)
-		}
+	if err := contract.ValidateIdentifier(field, value, maximum); err != nil {
+		return invalid(err)
 	}
 	return nil
 }
