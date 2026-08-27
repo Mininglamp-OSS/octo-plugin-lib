@@ -94,7 +94,7 @@ U+2029 输出为 `\u` 转义。对象排序为 O(k log k)，内存与规范化�
 
 物理表和键见 [er.md](er.md)。只有三张表：
 
-- `plugin`：当前名称、描述查询投影、类型、状态、Revision 指针与 CAS 版本；
+- `plugin`：当前名称与类型查询投影、状态、Revision 指针与 CAS 版本；
 - `plugin_revision`：不可变内容历史；
 - `plugin_relation`：当前关系集合。
 
