@@ -664,7 +664,7 @@ func TestDocumentationMatchesContract(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, phrase := range []string{"PluginBundle", "SavePluginGraph", "独立 Plugin Service", "名称、描述查询投影"} {
+		for _, phrase := range []string{"PluginBundle", "SavePluginGraph", "独立 Plugin Service", "描述查询投影"} {
 			if strings.Contains(string(data), phrase) {
 				t.Errorf("%s contains historical contract language %q", filename, phrase)
 			}
